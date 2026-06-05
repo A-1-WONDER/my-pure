@@ -16,18 +16,20 @@ const home = 0, // 平台规定只有 home 路由的 rank 才能为 0 ，所以�
   permission = 13,
   system = 14,
   monitor = 15,
-  tabs = 16,
-  about = 17,
-  codemirror = 18,
-  markdown = 19,
-  editor = 20,
-  flowchart = 21,
-  formdesign = 22,
-  board = 23,
-  ppt = 24,
-  mind = 25,
-  guide = 26,
-  menuoverflow = 27;
+  alarm = 16,
+  tabs = 17,
+  about = 18,
+  codemirror = 19,
+  markdown = 20,
+  editor = 21,
+  flowchart = 22,
+  formdesign = 23,
+  board = 24,
+  ppt = 25,
+  mind = 26,
+  guide = 27,
+  menuoverflow = 28,
+  businessStats = 29; // 用量统计
 
 export {
   home,
@@ -46,6 +48,7 @@ export {
   permission,
   system,
   monitor,
+  alarm,
   tabs,
   about,
   codemirror,
@@ -57,5 +60,6 @@ export {
   ppt,
   mind,
   guide,
-  menuoverflow
+  menuoverflow,
+  businessStats
 };

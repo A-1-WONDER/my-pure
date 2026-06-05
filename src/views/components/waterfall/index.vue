@@ -141,7 +141,6 @@ onMounted(() => {
       :right="35"
       :bottom="50"
       :visibility-height="400"
-      target=".content .el-scrollbar__wrap"
     >
       <backTop />
     </el-backtop>

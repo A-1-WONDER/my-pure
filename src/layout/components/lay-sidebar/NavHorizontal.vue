@@ -2,6 +2,7 @@
 import { emitter } from "@/utils/mitt";
 import { useNav } from "@/layout/hooks/useNav";
 import LaySearch from "../lay-search/index.vue";
+import LayDataScreen from "../lay-data-screen/index.vue";
 import LayNotice from "../lay-notice/index.vue";
 import { responsiveStorageNameSpace } from "@/config";
 import { ref, nextTick, computed, onMounted } from "vue";
@@ -79,6 +80,8 @@ onMounted(() => {
       />
     </el-menu>
     <div class="horizontal-header-right">
+      <!-- 数据大屏 -->
+      <LayDataScreen id="header-data-screen" />
       <!-- 菜单搜索 -->
       <LaySearch id="header-search" />
       <!-- 国际化 -->

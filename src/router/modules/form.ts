@@ -7,7 +7,8 @@ export default {
   meta: {
     icon: "ri/edit-box-line",
     title: $t("menus.pureSchemaForm"),
-    rank: form
+    rank: form,
+    showLink: false
   },
   children: [
     {

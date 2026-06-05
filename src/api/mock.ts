@@ -1,10 +1,5 @@
 import { http } from "@/utils/http";
-
-type Result = {
-  code: number;
-  message: string;
-  data: Array<any>;
-};
+import type { Result } from "@/api/types";
 
 /** 地图数据 */
 export const mapJson = (params?: object) => {

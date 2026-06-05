@@ -106,21 +106,26 @@ export function useMenu() {
 
   async function onSearch() {
     loading.value = true;
-    const { code, data } = await getMenuList(); // 这里是返回一维数组结构，前端自行处理成树结构，返回格式要求：唯一id加父节点parentId，parentId取父节点id
-    if (code === 0) {
-      let newData = data;
-      if (!isAllEmpty(form.title)) {
-        // 前端搜索菜单名称
-        newData = newData.filter(item =>
-          transformI18n(item.title).includes(form.title)
-        );
+    try {
+      const { code, data } = await getMenuList();
+      if (code === 0 && data) {
+        let newData = data;
+        if (!isAllEmpty(form.title)) {
+          newData = newData.filter(item =>
+            String(transformI18n(item.title) ?? item.title).includes(form.title)
+          );
+        }
+        dataList.value = handleTree(newData);
       }
-      dataList.value = handleTree(newData); // 处理成树结构
+    } catch {
+      message("加载菜单列表失败，请确认已登录且具有菜单查询权限", {
+        type: "error"
+      });
+    } finally {
+      setTimeout(() => {
+        loading.value = false;
+      }, 500);
     }
-
-    setTimeout(() => {
-      loading.value = false;
-    }, 500);
   }
 
   function formatHigherMenuOptions(treeList) {

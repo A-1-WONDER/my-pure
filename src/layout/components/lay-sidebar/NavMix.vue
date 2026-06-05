@@ -3,6 +3,7 @@ import { isAllEmpty } from "@pureadmin/utils";
 import { useNav } from "@/layout/hooks/useNav";
 import { transformI18n } from "@/plugins/i18n";
 import LaySearch from "../lay-search/index.vue";
+import LayDataScreen from "../lay-data-screen/index.vue";
 import LayNotice from "../lay-notice/index.vue";
 import { ref, toRaw, watch, onMounted, nextTick } from "vue";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
@@ -100,6 +101,8 @@ watch(
       </el-menu-item>
     </el-menu>
     <div class="horizontal-header-right">
+      <!-- 数据大屏 -->
+      <LayDataScreen id="header-data-screen" />
       <!-- 菜单搜索 -->
       <LaySearch id="header-search" />
       <!-- 国际化 -->

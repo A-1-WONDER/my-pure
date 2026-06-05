@@ -106,6 +106,57 @@ const systemMonitorRouter = {
   ]
 };
 
+const systemMonitor2Router = {
+  path: "/monitor2",
+  meta: {
+    icon: "ep:monitor",
+    title: "menus.pureSysMonitor2",
+    rank: monitor
+  },
+  children: [
+    {
+      path: "/monitor2/collector",
+      component: "monitor2/collector/index",
+      name: "Monitor2Collector",
+      meta: {
+        icon: "ri:server-line",
+        title: "menus.pureCollector",
+        roles: ["admin"]
+      }
+    },
+    {
+      path: "/monitor2/water-meter",
+      component: "monitor2/water-meter/index",
+      name: "Monitor2WaterMeter",
+      meta: {
+        icon: "ri:water-flash-line",
+        title: "menus.pureWaterMeter",
+        roles: ["admin"]
+      }
+    },
+    {
+      path: "/monitor2/meter-add",
+      component: "monitor2/meter-add/index",
+      name: "Monitor2MeterAdd",
+      meta: {
+        icon: "ri:add-circle-line",
+        title: "menus.pureMeterAdd",
+        roles: ["admin"]
+      }
+    },
+    {
+      path: "/monitor2/system-logs",
+      component: "monitor2/logs/system/index",
+      name: "SystemLog2",
+      meta: {
+        icon: "ri:file-search-line",
+        title: "menus.pureSystemLog2",
+        roles: ["admin"]
+      }
+    }
+  ]
+};
+
 const permissionRouter = {
   path: "/permission",
   meta: {
@@ -331,6 +382,7 @@ export default defineFakeRoute([
         data: [
           systemManagementRouter,
           systemMonitorRouter,
+          systemMonitor2Router,
           permissionRouter,
           frameRouter,
           tabsRouter

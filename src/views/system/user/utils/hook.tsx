@@ -237,11 +237,14 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
   }
 
   function handleSizeChange(val: number) {
-    console.log(`${val} items per page`);
+    pagination.pageSize = val;
+    pagination.currentPage = 1;
+    onSearch();
   }
 
   function handleCurrentChange(val: number) {
-    console.log(`current page: ${val}`);
+    pagination.currentPage = val;
+    onSearch();
   }
 
   /** 当CheckBox选择项发生变化时会触发该事件 */
@@ -272,17 +275,27 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
 
   async function onSearch() {
     loading.value = true;
-    const { code, data } = await getUserList(toRaw(form));
-    if (code === 0) {
-      dataList.value = data.list;
-      pagination.total = data.total;
-      pagination.pageSize = data.pageSize;
-      pagination.currentPage = data.currentPage;
+    try {
+      const { code, data } = await getUserList({
+        ...toRaw(form),
+        page: pagination.currentPage,
+        pageSize: pagination.pageSize
+      });
+      if (code === 0 && data) {
+        dataList.value = data.list;
+        pagination.total = data.total;
+        pagination.pageSize = data.pageSize;
+        pagination.currentPage = data.currentPage;
+      }
+    } catch {
+      message("加载用户列表失败，请确认已登录且具有用户查询权限", {
+        type: "error"
+      });
+    } finally {
+      setTimeout(() => {
+        loading.value = false;
+      }, 500);
     }
-
-    setTimeout(() => {
-      loading.value = false;
-    }, 500);
   }
 
   const resetForm = formEl => {
@@ -498,17 +511,23 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
     treeLoading.value = true;
     onSearch();
 
-    // 归属部门
-    const { code, data } = await getDeptList();
-    if (code === 0) {
-      higherDeptOptions.value = handleTree(data);
-      treeData.value = handleTree(data);
+    try {
+      const { code, data } = await getDeptList();
+      if (code === 0 && data) {
+        higherDeptOptions.value = handleTree(data);
+        treeData.value = handleTree(data);
+      }
+    } catch {
+      message("加载部门树失败", { type: "error" });
     }
 
     treeLoading.value = false;
 
-    // 角色列表
-    roleOptions.value = (await getAllRoleList()).data ?? [];
+    try {
+      roleOptions.value = (await getAllRoleList()).data ?? [];
+    } catch {
+      roleOptions.value = [];
+    }
   });
 
   return {

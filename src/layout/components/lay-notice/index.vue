@@ -1,26 +1,77 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { storeToRefs } from "pinia";
+import { cloneDeep } from "@pureadmin/utils";
 import { noticesData } from "./data";
 import NoticeList from "./components/NoticeList.vue";
 import BellIcon from "~icons/lucide/bell";
+import { useAlarmNoticeStore } from "@/store/modules/alarmNotice";
+import {
+  startAlarmNoticePolling,
+  stopAlarmNoticePolling
+} from "@/utils/alarmNoticePoll";
+import { message } from "@/utils/message";
 
 const { t } = useI18n();
-const notices = ref(noticesData);
+
+const alarmNoticeStore = useAlarmNoticeStore();
+const { items: alarmNoticeItems, alarmUnreadCount } =
+  storeToRefs(alarmNoticeStore);
+
+function onNoticeDropdownVisible(visible: boolean) {
+  if (visible) {
+    alarmNoticeStore.markAlarmNoticesRead();
+  }
+}
+
+function handleClearAlarmNotices() {
+  if (alarmNoticeItems.value.length === 0) return;
+  alarmNoticeStore.clearAlarmNotices();
+  message("已清空通知", { type: "success" });
+}
+
+/** 合并框架默认通知数据与报警站内通知（报警在「通知」页签最前） */
+const notices = computed(() => {
+  const tabs = cloneDeep(noticesData);
+  const notifyTab = tabs.find(item => item.key === "1");
+  if (notifyTab) {
+    notifyTab.list = [...alarmNoticeItems.value, ...(notifyTab.list ?? [])];
+  }
+  return tabs;
+});
+
 const activeKey = ref(noticesData[0]?.key);
 
 const getLabel = computed(
   () => item =>
     t(item.name) + (item.list.length > 0 ? `(${item.list.length})` : "")
 );
+
+onMounted(() => {
+  alarmNoticeStore.hydrateFromStorage();
+  startAlarmNoticePolling(45000);
+});
+
+onBeforeUnmount(() => {
+  stopAlarmNoticePolling();
+});
 </script>
 
 <template>
-  <el-dropdown trigger="click" placement="bottom-end">
+  <el-dropdown
+    trigger="click"
+    placement="bottom-end"
+    @visible-change="onNoticeDropdownVisible"
+  >
     <span
       :class="['dropdown-badge', 'navbar-bg-hover', 'select-none', 'mr-[7px]']"
     >
-      <el-badge is-dot>
+      <el-badge
+        :value="alarmUnreadCount"
+        :max="99"
+        :hidden="alarmUnreadCount === 0"
+      >
         <span class="header-notice-icon">
           <IconifyIconOffline :icon="BellIcon" />
         </span>
@@ -42,6 +93,19 @@ const getLabel = computed(
           <span v-else>
             <template v-for="item in notices" :key="item.key">
               <el-tab-pane :label="getLabel(item)" :name="`${item.key}`">
+                <div
+                  v-if="item.key === '1' && alarmNoticeItems.length > 0"
+                  class="notice-clear-toolbar"
+                >
+                  <el-button
+                    text
+                    type="danger"
+                    size="small"
+                    @click.stop="handleClearAlarmNotices"
+                  >
+                    清空
+                  </el-button>
+                </div>
                 <el-scrollbar max-height="330px">
                   <div class="noticeList-container">
                     <NoticeList :list="item.list" :emptyText="item.emptyText" />
@@ -105,6 +169,12 @@ const getLabel = computed(
 }
 
 .dropdown-tabs {
+  .notice-clear-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 24px 0;
+  }
+
   .noticeList-container {
     padding: 15px 24px 0;
   }

@@ -7,7 +7,8 @@ export default {
   meta: {
     title: $t("menus.pureMenus"),
     icon: "ep/histogram",
-    rank: nested
+    rank: nested,
+    showLink: false
   },
   children: [
     {
@@ -67,15 +68,6 @@ export default {
           }
         }
       ]
-    },
-    {
-      path: "/nested/menu2",
-      name: "Menu2",
-      component: () => import("@/views/nested/menu2/index.vue"),
-      meta: {
-        title: $t("menus.pureMenu2"),
-        keepAlive: true
-      }
     }
   ]
 } satisfies RouteConfigsTable;

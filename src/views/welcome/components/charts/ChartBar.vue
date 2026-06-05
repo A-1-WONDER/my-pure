@@ -41,7 +41,7 @@ watch(
         right: 0
       },
       legend: {
-        data: ["需求人数", "提问数量"],
+        data: ["在线情况", "数量"],
         textStyle: {
           color: "#606266",
           fontSize: "0.875rem"
@@ -74,7 +74,7 @@ watch(
       ],
       series: [
         {
-          name: "需求人数",
+          name: "在线情况",
           type: "bar",
           barWidth: 10,
           itemStyle: {
@@ -84,7 +84,7 @@ watch(
           data: props.requireData
         },
         {
-          name: "提问数量",
+          name: "数量",
           type: "bar",
           barWidth: 10,
           itemStyle: {

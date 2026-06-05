@@ -7,7 +7,8 @@ export default {
   meta: {
     icon: "ri/ubuntu-fill",
     title: $t("menus.pureAble"),
-    rank: able
+    rank: able,
+    showLink: false
   },
   children: [
     {
@@ -15,7 +16,8 @@ export default {
       name: "MqttClient",
       component: () => import("@/views/able/mqtt-client.vue"),
       meta: {
-        title: $t("menus.pureMqtt")
+        title: $t("menus.pureMqtt"),
+        showLink: false
       }
     },
     {
@@ -31,7 +33,8 @@ export default {
       name: "WaterMark",
       component: () => import("@/views/able/watermark.vue"),
       meta: {
-        title: $t("menus.pureWatermark")
+        title: $t("menus.pureWatermark"),
+        showLink: false
       }
     },
     {
@@ -63,7 +66,8 @@ export default {
       name: "Ripple",
       component: () => import("@/views/able/ripple.vue"),
       meta: {
-        title: $t("menus.pureRipple")
+        title: $t("menus.pureRipple"),
+        showLink: false
       }
     },
     {
@@ -71,7 +75,8 @@ export default {
       name: "Debounce",
       component: () => import("@/views/able/debounce.vue"),
       meta: {
-        title: $t("menus.pureDebounce")
+        title: $t("menus.pureDebounce"),
+        showLink: false
       }
     },
     {
@@ -107,7 +112,8 @@ export default {
       name: "BarCode",
       component: () => import("@/views/able/barcode.vue"),
       meta: {
-        title: $t("menus.pureBarcode")
+        title: $t("menus.pureBarcode"),
+        showLink: false
       }
     },
     {
@@ -115,7 +121,8 @@ export default {
       name: "QrCode",
       component: () => import("@/views/able/qrcode.vue"),
       meta: {
-        title: $t("menus.pureQrcode")
+        title: $t("menus.pureQrcode"),
+        showLink: false
       }
     },
     {
@@ -127,7 +134,8 @@ export default {
         keepAlive: true,
         transition: {
           name: "fade"
-        }
+        },
+        showLink: false
       }
     },
     {
@@ -135,7 +143,8 @@ export default {
       name: "Wavesurfer",
       component: () => import("@/views/able/wavesurfer/index.vue"),
       meta: {
-        title: $t("menus.pureWavesurfer")
+        title: $t("menus.pureWavesurfer"),
+        showLink: false
       }
     },
     {
@@ -143,7 +152,8 @@ export default {
       name: "VideoPage",
       component: () => import("@/views/able/video.vue"),
       meta: {
-        title: $t("menus.pureVideo")
+        title: $t("menus.pureVideo"),
+        showLink: false
       }
     },
     {
@@ -151,7 +161,8 @@ export default {
       name: "VideoFrame",
       component: () => import("@/views/able/video-frame/index.vue"),
       meta: {
-        title: $t("menus.pureVideoFrame")
+        title: $t("menus.pureVideoFrame"),
+        showLink: false
       }
     },
     {
@@ -159,7 +170,8 @@ export default {
       name: "Danmaku",
       component: () => import("@/views/able/danmaku/index.vue"),
       meta: {
-        title: $t("menus.pureDanmaku")
+        title: $t("menus.pureDanmaku"),
+        showLink: false
       }
     },
     {
@@ -167,7 +179,8 @@ export default {
       name: "InfiniteScroll",
       component: () => import("@/views/able/infinite-scroll.vue"),
       meta: {
-        title: $t("menus.pureInfiniteScroll")
+        title: $t("menus.pureInfiniteScroll"),
+        showLink: false
       }
     },
     {
@@ -199,7 +212,8 @@ export default {
       name: "Sensitive",
       component: () => import("@/views/able/sensitive.vue"),
       meta: {
-        title: $t("menus.pureSensitive")
+        title: $t("menus.pureSensitive"),
+        showLink: false
       }
     },
     {
@@ -207,7 +221,8 @@ export default {
       name: "Pinyin",
       component: () => import("@/views/able/pinyin.vue"),
       meta: {
-        title: $t("menus.purePinyin")
+        title: $t("menus.purePinyin"),
+        showLink: false
       }
     }
   ]

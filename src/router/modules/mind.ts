@@ -8,7 +8,8 @@ export default {
   meta: {
     icon: "ri/mind-map",
     title: $t("menus.pureMindMap"),
-    rank: mind
+    rank: mind,
+    showLink: false
   },
   children: [
     {

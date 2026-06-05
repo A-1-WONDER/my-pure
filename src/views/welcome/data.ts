@@ -1,10 +1,8 @@
-import { dayjs, cloneDeep, getRandomIntBetween } from "./utils";
+import { dayjs, getRandomIntBetween } from "./utils";
 import GroupLine from "~icons/ri/group-line";
 import Question from "~icons/ri/question-answer-line";
 import CheckLine from "~icons/ri/chat-check-line";
 import Smile from "~icons/ri/star-smile-line";
-
-const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
 /** 需求人数、提问数量、解决数量、用户满意度 */
 const chartData = [
@@ -62,53 +60,7 @@ const barChartData = [
   }
 ];
 
-/** 解决概率 */
-const progressData = [
-  {
-    week: "周一",
-    percentage: 85,
-    duration: 110,
-    color: "#41b6ff"
-  },
-  {
-    week: "周二",
-    percentage: 86,
-    duration: 105,
-    color: "#41b6ff"
-  },
-  {
-    week: "周三",
-    percentage: 88,
-    duration: 100,
-    color: "#41b6ff"
-  },
-  {
-    week: "周四",
-    percentage: 89,
-    duration: 95,
-    color: "#41b6ff"
-  },
-  {
-    week: "周五",
-    percentage: 94,
-    duration: 90,
-    color: "#26ce83"
-  },
-  {
-    week: "周六",
-    percentage: 96,
-    duration: 85,
-    color: "#26ce83"
-  },
-  {
-    week: "周日",
-    percentage: 100,
-    duration: 80,
-    color: "#26ce83"
-  }
-].reverse();
-
-/** 数据统计 */
+/** 数据统计（WelcomeTable 演示数据） */
 const tableData = Array.from({ length: 30 }).map((_, index) => {
   return {
     id: index + 1,
@@ -120,15 +72,4 @@ const tableData = Array.from({ length: 30 }).map((_, index) => {
   };
 });
 
-/** 最新动态 */
-const latestNewsData = cloneDeep(tableData)
-  .slice(0, 14)
-  .map((item, index) => {
-    return Object.assign(item, {
-      date: `${dayjs().subtract(index, "day").format("YYYY-MM-DD")} ${
-        days[dayjs().subtract(index, "day").day()]
-      }`
-    });
-  });
-
-export { chartData, barChartData, progressData, tableData, latestNewsData };
+export { chartData, barChartData, tableData };

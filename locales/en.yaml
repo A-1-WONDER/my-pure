@@ -76,6 +76,19 @@ menus:
   pureLoginLog: Login Log
   pureOperationLog: Operation Log
   pureSystemLog: System Log
+  pureSysMonitor2: System Monitor 2
+  pureOnlineUser2: Online User
+  pureLoginLog2: Login Log
+  pureOperationLog2: Operation Log
+  pureSystemLog2: Meter Management
+  pureCollector: Collector Management
+  pureWaterMeter: Water Meter Management
+  pureMeterAdd: Meter Add Management
+  pureAlarmManagement: Alarm Management
+  pureAlarmEventQuery: Alarm Event Query
+  pureAlarmRuleConfig: Alarm Rule Configuration
+  pureAlarmSystemSetting: System Alarm Setting
+  pureAlarmUsageSetting: Alarm Usage Setting
   pureCodeMirror: CodeMirror
   pureMarkdown: Markdown
   pureEditor: Editor
@@ -128,7 +141,7 @@ menus:
   pureMenu1-3: Menu1-3
   pureMenu2: Menu2
   purePermission: Permission Manage
-  purePermissionPage: Page Permission
+  purePermissionPage: API Authorization
   purePermissionButton: Button Permission
   purePermissionButtonRouter: Route return button permission
   purePermissionButtonLogin: Login interface return button permission
@@ -240,6 +253,8 @@ login:
   purePassWordDifferentReg: The two passwords do not match!
   purePassWordUpdateReg: Password has been updated
   pureLoginExpired: Login expired, please login again
+  pureClickRefresh: Click to refresh verification code
+  pureLoadingCode: Loading
 tableBar:
   pureList: List
   pureLarge: Large

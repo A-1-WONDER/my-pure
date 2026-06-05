@@ -64,5 +64,33 @@ export default [
       title: $t("menus.pureEmpty"),
       showLink: false
     }
+  },
+  {
+    path: "/data-screen",
+    name: "DataScreen",
+    component: () => import("@/views/data-screen/index.vue"),
+    meta: {
+      title: "数据可视化大屏",
+      showLink: false
+    }
+  },
+  // 报警管理路由重定向（从旧路径 /nested/alarm/* 重定向到新路径 /alarm/*）
+  {
+    path: "/nested/alarm",
+    redirect: "/alarm",
+    meta: {
+      title: "报警管理重定向",
+      showLink: false,
+      rank: 9999
+    }
+  },
+  {
+    path: "/nested/alarm/:path(.*)",
+    redirect: "/alarm/:path",
+    meta: {
+      title: "报警管理重定向",
+      showLink: false,
+      rank: 9999
+    }
   }
 ] satisfies Array<RouteConfigsTable>;

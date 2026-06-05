@@ -16,6 +16,42 @@ import {
 import { useMultiTagsStoreHook } from "./multiTags";
 import { type DataInfo, setToken, removeToken, userKey } from "@/utils/auth";
 
+/**
+ * 处理头像路径
+ * 将本地文件路径转换为可访问的URL或使用默认头像
+ */
+function processAvatarPath(avatarPath: string | undefined): string {
+  if (!avatarPath) return "";
+
+  // 如果是本地文件路径（包含盘符或反斜杠）
+  if (
+    avatarPath.includes("\\") ||
+    avatarPath.includes(":\\") ||
+    avatarPath.includes("/")
+  ) {
+    console.warn("检测到本地文件路径头像:", avatarPath);
+
+    // 尝试从路径中提取文件名
+    const fileName = avatarPath.split(/[\\/]/).pop();
+    if (fileName) {
+      // 如果是eladmin的avatar目录文件，尝试通过API访问
+      if (fileName.includes("avatar-")) {
+        // 返回API路径（需要后端提供头像访问接口）
+        // 注意：eladmin的头像接口可能需要认证
+        const avatarUrl = `/api/avatar/${fileName}`;
+        console.log("生成的头像URL:", avatarUrl);
+        return avatarUrl;
+      }
+    }
+
+    // 无法处理本地路径，返回空或默认头像
+    return "";
+  }
+
+  // 如果是URL或相对路径，直接返回
+  return avatarPath;
+}
+
 export const useUserStore = defineStore("pure-user", {
   state: (): userType => ({
     // 头像
@@ -77,18 +113,127 @@ export const useUserStore = defineStore("pure-user", {
     },
     /** 登入 */
     async loginByUsername(data) {
+      console.log("[userStore] 登录请求数据:", {
+        username: data.username,
+        password: data.password ? "***加密长度:" + data.password.length : "空",
+        code: data.code,
+        uuid: data.uuid
+      });
+
       return new Promise<UserResult>((resolve, reject) => {
         getLogin(data)
-          .then(data => {
-            if (data.code === 0) {
-              setToken(data.data);
-              resolve(data);
+          .then(response => {
+            console.log("[userStore] 登录响应:", response);
+
+            // 检查响应结构
+            if (response && typeof response === "object") {
+              // 适配不同的后端响应格式
+              // 情况1: 有code字段（标准格式）
+              if (response.code !== undefined) {
+                if (response.code === 0) {
+                  // 标准格式处理
+                  const backendData = {
+                    accessToken: response.data.token.replace("Bearer ", ""), // 移除Bearer前缀
+                    refreshToken:
+                      response.data.refreshToken ||
+                      response.data.token.replace("Bearer ", ""),
+                    expires: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2小时过期
+                    avatar: response.data.user?.avatar || "",
+                    username: response.data.user?.username || "",
+                    nickname: response.data.user?.nickName || "",
+                    roles: response.data.user?.roles || [],
+                    permissions: response.data.user?.permissions || []
+                  };
+                  setToken(backendData);
+                  resolve(response);
+                } else {
+                  // 如果后端返回错误，但code不为0
+                  console.error("[userStore] 登录失败，code不为0:", response);
+                  const error = new Error(response.message || "登录失败");
+                  // @ts-ignore
+                  error.response = { data: response };
+                  reject(error);
+                }
+              }
+              // 情况2: 没有code字段，但有token（eladmin格式）
+              else if (response.token) {
+                console.log("[userStore] 检测到eladmin格式响应");
+
+                // 将eladmin格式转换为前端期望的格式
+                const formattedResponse = {
+                  code: 0,
+                  message: "登录成功",
+                  data: {
+                    token: response.token,
+                    refreshToken: response.token, // eladmin可能没有refreshToken
+                    user: {
+                      // 处理头像路径：如果是本地文件路径，转换为URL或使用默认
+                      avatar:
+                        processAvatarPath(response.user?.user?.avatarPath) ||
+                        "",
+                      username: response.user?.user?.username || data.username,
+                      nickName: response.user?.user?.nickName || "",
+                      roles: response.user?.roles || [],
+                      permissions: [] // eladmin可能没有permissions字段
+                    }
+                  }
+                };
+
+                console.log("[userStore] 转换后的响应:", formattedResponse);
+
+                // 存储token
+                const backendData = {
+                  accessToken: formattedResponse.data.token.replace(
+                    "Bearer ",
+                    ""
+                  ),
+                  refreshToken: formattedResponse.data.refreshToken.replace(
+                    "Bearer ",
+                    ""
+                  ),
+                  expires: new Date(Date.now() + 2 * 60 * 60 * 1000),
+                  avatar: formattedResponse.data.user.avatar,
+                  username: formattedResponse.data.user.username,
+                  nickname: formattedResponse.data.user.nickName,
+                  roles: formattedResponse.data.user.roles,
+                  permissions: formattedResponse.data.user.permissions
+                };
+
+                setToken(backendData);
+                resolve(formattedResponse);
+              }
+              // 情况3: 未知格式
+              else {
+                console.error("[userStore] 未知响应格式:", response);
+                reject(new Error("未知的响应格式"));
+              }
             } else {
-              reject(data.message);
+              console.error("[userStore] 响应格式错误:", response);
+              reject(new Error("响应格式错误"));
             }
           })
           .catch(error => {
-            reject(error);
+            console.error("[userStore] 登录请求失败:", error);
+
+            // 详细记录错误信息
+            if (error.response) {
+              console.error("[userStore] 错误响应状态:", error.response.status);
+              console.error("[userStore] 错误响应数据:", error.response.data);
+
+              // 创建包含完整错误信息的错误对象
+              const errorMessage =
+                error.response.data?.message || error.message || "登录失败";
+              const detailedError = new Error(errorMessage);
+              // @ts-ignore
+              detailedError.response = error.response;
+              reject(detailedError);
+            } else if (error.request) {
+              console.error("[userStore] 错误请求:", error.request);
+              reject(new Error("网络请求失败"));
+            } else {
+              // 其他错误
+              reject(error);
+            }
           });
       });
     },

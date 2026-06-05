@@ -2,7 +2,7 @@
 import { formUpload } from "@/api/mock";
 import { message } from "@/utils/message";
 import { onMounted, reactive, ref } from "vue";
-import { type UserInfo, getMine } from "@/api/user";
+import { type UserInfo, getMine, updateMine } from "@/api/user";
 import type { FormInstance, FormRules } from "element-plus";
 import ReCropperPreview from "@/components/ReCropperPreview";
 import { createFormData, deviceDetection } from "@pureadmin/utils";
@@ -86,16 +86,29 @@ const handleSubmitImage = () => {
     });
 };
 
-// 更新信息
-const onSubmit = async (formEl: FormInstance) => {
-  await formEl.validate((valid, fields) => {
-    if (valid) {
-      console.log(userInfos);
+// 更新信息（需后端实现 PUT /mine；本地 mock 见 mock/mine.ts）
+const onSubmit = async (formEl: FormInstance | undefined) => {
+  if (!formEl) return;
+  try {
+    await formEl.validate();
+  } catch {
+    return;
+  }
+  try {
+    const { code, data, message: msg } = await updateMine(userInfos);
+    if (code === 0) {
+      if (data) Object.assign(userInfos, data);
       message("更新信息成功", { type: "success" });
     } else {
-      console.log("error submit!", fields);
+      message(String(msg || "更新失败"), { type: "error" });
     }
-  });
+  } catch (error: unknown) {
+    console.error("更新个人信息失败:", error);
+    message(
+      error instanceof Error ? error.message : "更新失败，请检查网络或接口",
+      { type: "error" }
+    );
+  }
 };
 
 onMounted(async () => {

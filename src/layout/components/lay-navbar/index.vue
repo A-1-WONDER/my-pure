@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useNav } from "@/layout/hooks/useNav";
 import LaySearch from "../lay-search/index.vue";
+import LayDataScreen from "../lay-data-screen/index.vue";
 import LayNotice from "../lay-notice/index.vue";
 import LayNavMix from "../lay-sidebar/NavMix.vue";
 import { useTranslationLang } from "@/layout/hooks/useTranslationLang";
@@ -49,6 +50,8 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
     <LayNavMix v-if="layout === 'mix'" />
 
     <div v-if="layout === 'vertical'" class="vertical-header-right">
+      <!-- 数据大屏 -->
+      <LayDataScreen id="header-data-screen" />
       <!-- 菜单搜索 -->
       <LaySearch id="header-search" />
       <!-- 国际化 -->
@@ -142,7 +145,7 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    min-width: 280px;
+    min-width: 320px;
     height: 48px;
     color: #000000d9;
 

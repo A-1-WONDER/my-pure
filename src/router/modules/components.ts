@@ -7,7 +7,8 @@ export default {
   meta: {
     icon: "ep/menu",
     title: $t("menus.pureComponents"),
-    rank: components
+    rank: components,
+    showLink: false
   },
   children: [
     {
@@ -15,7 +16,8 @@ export default {
       name: "DialogPage",
       component: () => import("@/views/components/dialog/index.vue"),
       meta: {
-        title: $t("menus.pureDialog")
+        title: $t("menus.pureDialog"),
+        showLink: false
       }
     },
     {
@@ -23,7 +25,8 @@ export default {
       name: "DrawerPage",
       component: () => import("@/views/components/drawer/index.vue"),
       meta: {
-        title: $t("menus.pureDrawer")
+        title: $t("menus.pureDrawer"),
+        showLink: false
       }
     },
     {
@@ -47,7 +50,8 @@ export default {
       name: "CheckCard",
       component: () => import("@/views/components/check-card.vue"),
       meta: {
-        title: $t("menus.pureCheckCard")
+        title: $t("menus.pureCheckCard"),
+        showLink: false
       }
     },
     {
@@ -87,7 +91,8 @@ export default {
       name: "AnimateCss",
       component: () => import("@/views/components/animatecss.vue"),
       meta: {
-        title: $t("menus.pureAnimatecss")
+        title: $t("menus.pureAnimatecss"),
+        showLink: false
       }
     },
     {
@@ -103,7 +108,8 @@ export default {
       name: "Segmented",
       component: () => import("@/views/components/segmented.vue"),
       meta: {
-        title: $t("menus.pureSegmented")
+        title: $t("menus.pureSegmented"),
+        showLink: false
       }
     },
     {
@@ -111,7 +117,8 @@ export default {
       name: "PureText",
       component: () => import("@/views/components/text.vue"),
       meta: {
-        title: $t("menus.pureText")
+        title: $t("menus.pureText"),
+        showLink: false
       }
     },
     {
@@ -119,7 +126,8 @@ export default {
       name: "PureSlider",
       component: () => import("@/views/components/slider/index.vue"),
       meta: {
-        title: $t("menus.pureSlider")
+        title: $t("menus.pureSlider"),
+        showLink: false
       }
     },
     {
@@ -127,7 +135,8 @@ export default {
       name: "PureButton",
       component: () => import("@/views/components/el-button.vue"),
       meta: {
-        title: $t("menus.pureElButton")
+        title: $t("menus.pureElButton"),
+        showLink: false
       }
     },
     {
@@ -135,7 +144,8 @@ export default {
       name: "CheckButton",
       component: () => import("@/views/components/check-button.vue"),
       meta: {
-        title: $t("menus.pureCheckButton")
+        title: $t("menus.pureCheckButton"),
+        showLink: false
       }
     },
     {
@@ -143,7 +153,8 @@ export default {
       name: "ButtonPage",
       component: () => import("@/views/components/button.vue"),
       meta: {
-        title: $t("menus.pureButton")
+        title: $t("menus.pureButton"),
+        showLink: false
       }
     },
     {
@@ -151,7 +162,8 @@ export default {
       name: "PureProgress",
       component: () => import("@/views/components/progress.vue"),
       meta: {
-        title: $t("menus.pureProgress")
+        title: $t("menus.pureProgress"),
+        showLink: false
       }
     },
     {
@@ -159,7 +171,8 @@ export default {
       name: "PureTag",
       component: () => import("@/views/components/tag.vue"),
       meta: {
-        title: $t("menus.pureTag")
+        title: $t("menus.pureTag"),
+        showLink: false
       }
     },
     {
@@ -175,7 +188,8 @@ export default {
       name: "Collapse",
       component: () => import("@/views/components/collapse.vue"),
       meta: {
-        title: $t("menus.pureCollapse")
+        title: $t("menus.pureCollapse"),
+        showLink: false
       }
     },
     {
@@ -191,7 +205,8 @@ export default {
       name: "ColorPicker",
       component: () => import("@/views/components/color-picker.vue"),
       meta: {
-        title: $t("menus.pureColorPicker")
+        title: $t("menus.pureColorPicker"),
+        showLink: false
       }
     },
     {
@@ -200,7 +215,8 @@ export default {
       component: () => import("@/views/components/color-picker-panel.vue"),
       meta: {
         title: $t("menus.pureColorPickerPanel"),
-        extraIcon: "IF-pure-iconfont-new svg"
+        extraIcon: "IF-pure-iconfont-new svg",
+        showLink: false
       }
     },
     {
@@ -208,7 +224,8 @@ export default {
       name: "Selector",
       component: () => import("@/views/components/selector.vue"),
       meta: {
-        title: $t("menus.pureSelector")
+        title: $t("menus.pureSelector"),
+        showLink: false
       }
     },
     {
@@ -216,7 +233,8 @@ export default {
       name: "Waterfall",
       component: () => import("@/views/components/waterfall/index.vue"),
       meta: {
-        title: $t("menus.pureWaterfall")
+        title: $t("menus.pureWaterfall"),
+        showLink: false
       }
     },
     {
@@ -224,7 +242,8 @@ export default {
       name: "SplitPane",
       component: () => import("@/views/components/split-pane.vue"),
       meta: {
-        title: $t("menus.pureSplitPane")
+        title: $t("menus.pureSplitPane"),
+        showLink: false
       }
     },
     {
@@ -240,7 +259,8 @@ export default {
       name: "TimeLine",
       component: () => import("@/views/components/timeline.vue"),
       meta: {
-        title: $t("menus.pureTimeline")
+        title: $t("menus.pureTimeline"),
+        showLink: false
       }
     },
     {
@@ -248,7 +268,8 @@ export default {
       name: "CountTo",
       component: () => import("@/views/components/count-to.vue"),
       meta: {
-        title: $t("menus.pureCountTo")
+        title: $t("menus.pureCountTo"),
+        showLink: false
       }
     },
     {
@@ -264,7 +285,8 @@ export default {
       name: "JsonEditor",
       component: () => import("@/views/components/json-editor.vue"),
       meta: {
-        title: $t("menus.pureJsonEditor")
+        title: $t("menus.pureJsonEditor"),
+        showLink: false
       }
     },
     {
@@ -272,7 +294,8 @@ export default {
       name: "SeamlessScroll",
       component: () => import("@/views/components/seamless-scroll.vue"),
       meta: {
-        title: $t("menus.pureSeamless")
+        title: $t("menus.pureSeamless"),
+        showLink: false
       }
     },
     {
@@ -280,7 +303,8 @@ export default {
       name: "VirtualList",
       component: () => import("@/views/components/virtual-list/index.vue"),
       meta: {
-        title: $t("menus.pureVirtualList")
+        title: $t("menus.pureVirtualList"),
+        showLink: false
       }
     }
   ]

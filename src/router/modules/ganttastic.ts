@@ -7,7 +7,8 @@ export default {
   meta: {
     icon: "ri/bar-chart-horizontal-line",
     title: $t("menus.pureGanttastic"),
-    rank: ganttastic
+    rank: ganttastic,
+    showLink: false
   },
   children: [
     {

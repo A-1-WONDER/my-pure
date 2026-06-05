@@ -70,6 +70,8 @@ export const useMultiTagsStore = defineStore("pure-multiTags", {
         case "push":
           {
             const tagVal = value as multiType;
+            // 如果tagVal为undefined或null，直接返回
+            if (!tagVal) return;
             // 不添加到标签页
             if (tagVal?.meta?.hiddenTag) return;
             // 如果是外链无需添加信息到标签页

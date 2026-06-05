@@ -68,8 +68,14 @@ declare global {
     VITE_PUBLIC_PATH: string;
     VITE_ROUTER_HISTORY: string;
     VITE_CDN: boolean;
+    /** 开发环境是否启用本地 mock 拦截（默认 false） */
+    VITE_USE_MOCK?: boolean;
     VITE_HIDE_HOME: string;
     VITE_COMPRESSION: ViteCompression;
+    /** 开发环境 Vite 代理目标，如 http://localhost:8004 */
+    VITE_API_TARGET?: string;
+    /** 为 true/1 时请求 POST /api/alarm-rule-detail 合并规则详情；未部署该接口时请保持未设置或 false，避免 404 */
+    VITE_ENABLE_ALARM_RULE_DETAIL?: string;
   }
 
   /**

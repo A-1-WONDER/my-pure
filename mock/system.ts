@@ -321,6 +321,37 @@ export default defineFakeRoute([
             menuType: 0,
             title: "menus.pureSystemLog"
           },
+          // 系统监控2
+          {
+            parentId: 0,
+            id: 405,
+            menuType: 0,
+            title: "menus.pureSysMonitor2"
+          },
+          {
+            parentId: 405,
+            id: 406,
+            menuType: 0,
+            title: "menus.pureOnlineUser2"
+          },
+          {
+            parentId: 405,
+            id: 407,
+            menuType: 0,
+            title: "menus.pureLoginLog2"
+          },
+          {
+            parentId: 405,
+            id: 408,
+            menuType: 0,
+            title: "menus.pureOperationLog2"
+          },
+          {
+            parentId: 405,
+            id: 409,
+            menuType: 0,
+            title: "menus.pureSystemLog2"
+          },
           // 标签页操作
           {
             parentId: 0,
@@ -362,7 +393,7 @@ export default defineFakeRoute([
           data: [
             100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 200, 201,
             202, 203, 204, 205, 300, 301, 302, 303, 304, 400, 401, 402, 403,
-            404, 500, 501, 502, 503
+            404, 405, 406, 407, 408, 409, 500, 501, 502, 503
           ]
         };
       } else if (body.id == 2) {

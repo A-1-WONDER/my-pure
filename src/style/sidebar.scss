@@ -445,9 +445,11 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      min-width: 340px;
+      min-width: 380px;
       color: var(--pure-theme-sub-menu-active-text);
 
+      /* 数据大屏 */
+      .data-screen-container,
       /* 搜索 */
       .search-container,
       /* 国际化 */

@@ -74,23 +74,27 @@ export function useDept() {
 
   async function onSearch() {
     loading.value = true;
-    const { code, data } = await getDeptList(); // 这里是返回一维数组结构，前端自行处理成树结构，返回格式要求：唯一id加父节点parentId，parentId取父节点id
-    if (code === 0) {
-      let newData = data;
-      if (!isAllEmpty(form.name)) {
-        // 前端搜索部门名称
-        newData = newData.filter(item => item.name.includes(form.name));
+    try {
+      const { code, data } = await getDeptList();
+      if (code === 0 && data) {
+        let newData = data;
+        if (!isAllEmpty(form.name)) {
+          newData = newData.filter(item => item.name.includes(form.name));
+        }
+        if (!isAllEmpty(form.status)) {
+          newData = newData.filter(item => item.status === form.status);
+        }
+        dataList.value = handleTree(newData);
       }
-      if (!isAllEmpty(form.status)) {
-        // 前端搜索状态
-        newData = newData.filter(item => item.status === form.status);
-      }
-      dataList.value = handleTree(newData); // 处理成树结构
+    } catch {
+      message("加载部门列表失败，请确认已登录且具有部门查询权限", {
+        type: "error"
+      });
+    } finally {
+      setTimeout(() => {
+        loading.value = false;
+      }, 500);
     }
-
-    setTimeout(() => {
-      loading.value = false;
-    }, 500);
   }
 
   function formatHigherDeptOptions(treeList) {

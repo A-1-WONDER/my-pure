@@ -17,7 +17,8 @@ import { vitePluginFakeServer } from "vite-plugin-fake-server";
 
 export function getPluginsList(
   VITE_CDN: boolean,
-  VITE_COMPRESSION: ViteCompression
+  VITE_COMPRESSION: ViteCompression,
+  VITE_USE_MOCK = false
 ): PluginOption[] {
   const lifecycle = process.env.npm_lifecycle_event;
   return [
@@ -51,12 +52,17 @@ export function getPluginsList(
      * vite-plugin-router-warn只在开发环境下启用，只处理vue-router文件并且只在服务启动或重启时运行一次，性能消耗可忽略不计
      */
     removeNoMatch(),
-    // mock支持
+    /**
+     * mock 支持：
+     * - VITE_USE_MOCK=true：拦截 mock 目录下全部演示接口
+     * - VITE_USE_MOCK=false：仅拦截 mock/system.ts（/user、/role、/menu、/dept 等 pure-admin 系统管理页），
+     *   不影响 /api、/auth 等真实 eladmin 后端
+     */
     vitePluginFakeServer({
       logger: false,
-      include: "mock",
+      include: VITE_USE_MOCK ? "mock" : "mock/pure-admin",
       infixName: false,
-      enableProd: true
+      enableProd: false
     }),
     // svg组件化支持
     svgLoader(),

@@ -2,15 +2,12 @@ import { reactive } from "vue";
 import { isPhone } from "@pureadmin/utils";
 import type { FormRules } from "element-plus";
 import { $t, transformI18n } from "@/plugins/i18n";
-import { useUserStoreHook } from "@/store/modules/user";
 
 /** 6位数字验证码正则 */
 export const REGEXP_SIX = /^\d{6}$/;
 
-/** 密码正则（密码格式应为8-18位数字、字母、符号的任意两种组合） */
-export const REGEXP_PWD =
-  /^(?![0-9]+$)(?![a-z]+$)(?![A-Z]+$)(?!([^(0-9a-zA-Z)]|[()])+$)(?!^.*[\u4E00-\u9FA5].*$)([^(0-9a-zA-Z)]|[()]|[a-z]|[A-Z]|[0-9]){8,18}$/;
-
+/** 密码正则（适配后端：最少1位，最多50位，允许任何字符） */
+export const REGEXP_PWD = /^.{1,50}$/;
 /** 登录校验 */
 const loginRules = reactive<FormRules>({
   password: [
@@ -19,7 +16,7 @@ const loginRules = reactive<FormRules>({
         if (value === "") {
           callback(new Error(transformI18n($t("login.purePassWordReg"))));
         } else if (!REGEXP_PWD.test(value)) {
-          callback(new Error(transformI18n($t("login.purePassWordRuleReg"))));
+          callback(new Error("密码长度应在1-50位之间"));
         } else {
           callback();
         }
@@ -32,10 +29,6 @@ const loginRules = reactive<FormRules>({
       validator: (rule, value, callback) => {
         if (value === "") {
           callback(new Error(transformI18n($t("login.pureVerifyCodeReg"))));
-        } else if (useUserStoreHook().verifyCode !== value) {
-          callback(
-            new Error(transformI18n($t("login.pureVerifyCodeCorrectReg")))
-          );
         } else {
           callback();
         }
@@ -113,7 +106,7 @@ const updateRules = reactive<FormRules>({
         if (value === "") {
           callback(new Error(transformI18n($t("login.purePassWordReg"))));
         } else if (!REGEXP_PWD.test(value)) {
-          callback(new Error(transformI18n($t("login.purePassWordRuleReg"))));
+          callback(new Error("密码长度应在1-50位之间"));
         } else {
           callback();
         }

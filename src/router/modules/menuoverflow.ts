@@ -6,7 +6,8 @@ export default {
   redirect: "/menuoverflow/index",
   meta: {
     title: $t("menus.pureMenuOverflow"),
-    rank: menuoverflow
+    rank: menuoverflow,
+    showLink: false
   },
   children: [
     {

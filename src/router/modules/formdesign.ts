@@ -8,7 +8,8 @@ export default {
   meta: {
     icon: "ri/terminal-window-line",
     title: $t("menus.pureFormDesign"),
-    rank: formdesign
+    rank: formdesign,
+    showLink: false
   },
   children: [
     {

@@ -150,11 +150,14 @@ export function useRole(treeRef: Ref) {
   }
 
   function handleSizeChange(val: number) {
-    console.log(`${val} items per page`);
+    pagination.pageSize = val;
+    pagination.currentPage = 1;
+    onSearch();
   }
 
   function handleCurrentChange(val: number) {
-    console.log(`current page: ${val}`);
+    pagination.currentPage = val;
+    onSearch();
   }
 
   function handleSelectionChange(val) {
@@ -163,17 +166,27 @@ export function useRole(treeRef: Ref) {
 
   async function onSearch() {
     loading.value = true;
-    const { code, data } = await getRoleList(toRaw(form));
-    if (code === 0) {
-      dataList.value = data.list;
-      pagination.total = data.total;
-      pagination.pageSize = data.pageSize;
-      pagination.currentPage = data.currentPage;
+    try {
+      const { code, data } = await getRoleList({
+        ...toRaw(form),
+        page: pagination.currentPage,
+        pageSize: pagination.pageSize
+      });
+      if (code === 0 && data) {
+        dataList.value = data.list;
+        pagination.total = data.total;
+        pagination.pageSize = data.pageSize;
+        pagination.currentPage = data.currentPage;
+      }
+    } catch {
+      message("加载角色列表失败，请确认已登录且具有角色查询权限", {
+        type: "error"
+      });
+    } finally {
+      setTimeout(() => {
+        loading.value = false;
+      }, 500);
     }
-
-    setTimeout(() => {
-      loading.value = false;
-    }, 500);
   }
 
   const resetForm = formEl => {
@@ -267,15 +280,20 @@ export function useRole(treeRef: Ref) {
   };
 
   const filterMethod = (query: string, node) => {
-    return transformI18n(node.title)!.includes(query);
+    const label = transformI18n(node.title) ?? node.title ?? "";
+    return String(label).includes(query);
   };
 
   onMounted(async () => {
     onSearch();
-    const { code, data } = await getRoleMenu();
-    if (code === 0) {
-      treeIds.value = getKeyList(data, "id");
-      treeData.value = handleTree(data);
+    try {
+      const { code, data } = await getRoleMenu();
+      if (code === 0 && data) {
+        treeIds.value = getKeyList(data, "id");
+        treeData.value = handleTree(data);
+      }
+    } catch {
+      message("加载菜单权限树失败", { type: "error" });
     }
   });
 

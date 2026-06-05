@@ -7,6 +7,39 @@ dist-ssr
 report.html
 vite.config.*.timestamp*
 
+# 本地临时/调试文件（避免 git add . 误提交）
+test-*.js
+test-*.html
+*.bak
+tatus
+temp_check.ts
+test_hook_content.txt
+check-*.txt
+check-*.md
+view_last_lines.js
+add_mock_data.js
+check_mock_structure.js
+
+# 备份/调试 hook 与登录页变体
+**/hook-backup.tsx
+**/hook-fixed.tsx
+**/hook-new*.tsx
+**/hook_fixed.tsx
+**/hook-enhanced.tsx
+login-fixed.vue
+login-simple.vue
+**/index-fixed.vue
+**/index-restored.vue
+**/index-simple.vue
+src/views/alarm/usage-settings/index-new.vue
+src/api/electric-meter-backup.ts
+mock/system-backup.ts
+mock/system-new-fixed.ts
+mock/system-new.ts
+check-*.md
+fix-*.md
+src/houdanjiekou.txt
+
 yarn.lock
 npm-debug.log*
 .pnpm-error.log*

@@ -156,34 +156,48 @@ function addPathMatch() {
 
 /** 处理动态路由（后端返回的路由） */
 function handleAsyncRoutes(routeList) {
+  console.log("处理动态路由，路由列表长度:", routeList?.length || 0);
+
   if (routeList.length === 0) {
+    console.log("路由列表为空，设置空菜单");
     usePermissionStoreHook().handleWholeMenus(routeList);
   } else {
-    formatFlatteningRoutes(addAsyncRoutes(routeList)).map(
-      (v: RouteRecordRaw) => {
-        // 防止重复添加路由
-        if (
-          router.options.routes[0].children.findIndex(
-            value => value.path === v.path
-          ) !== -1
-        ) {
-          return;
-        } else {
-          // 切记将路由push到routes后还需要使用addRoute，这样路由才能正常跳转
-          router.options.routes[0].children.push(v);
-          // 最终路由进行升序
-          ascending(router.options.routes[0].children);
-          if (!router.hasRoute(v?.name)) router.addRoute(v);
-          const flattenRouters: any = router
-            .getRoutes()
-            .find(n => n.path === "/");
-          // 保持router.options.routes[0].children与path为"/"的children一致，防止数据不一致导致异常
-          flattenRouters.children = router.options.routes[0].children;
-          router.addRoute(flattenRouters);
+    console.log("开始处理动态路由，数量:", routeList.length);
+    const processedRoutes = addAsyncRoutes(routeList);
+    console.log("处理后的路由:", processedRoutes);
+
+    formatFlatteningRoutes(processedRoutes).map((v: RouteRecordRaw) => {
+      // 防止重复添加路由
+      if (
+        router.options.routes[0].children.findIndex(
+          value => value.path === v.path
+        ) !== -1
+      ) {
+        console.log("路由已存在，跳过:", v.path);
+        return;
+      } else {
+        console.log("添加路由:", v.path, v.name);
+        // 切记将路由push到routes后还需要使用addRoute，这样路由才能正常跳转
+        router.options.routes[0].children.push(v);
+        // 最终路由进行升序
+        ascending(router.options.routes[0].children);
+        if (!router.hasRoute(v?.name)) {
+          router.addRoute(v);
+          console.log("路由已注册到router:", v.name);
         }
+        const flattenRouters: any = router
+          .getRoutes()
+          .find(n => n.path === "/");
+        // 保持router.options.routes[0].children与path为"/"的children一致，防止数据不一致导致异常
+        flattenRouters.children = router.options.routes[0].children;
+        router.addRoute(flattenRouters);
       }
-    );
+    });
     usePermissionStoreHook().handleWholeMenus(routeList);
+    console.log(
+      "wholeMenus已更新，长度:",
+      usePermissionStoreHook().wholeMenus.length
+    );
   }
   if (!useMultiTagsStoreHook().getMultiTagsCache) {
     useMultiTagsStoreHook().handleTags("equal", [
@@ -198,38 +212,59 @@ function handleAsyncRoutes(routeList) {
 
 /** 初始化路由（`new Promise` 写法防止在异步请求中造成无限循环）*/
 function initRouter() {
-  if (getConfig()?.CachingAsyncRoutes) {
-    // 开启动态路由缓存本地localStorage
-    const key = "async-routes";
-    const asyncRouteList = storageLocal().getItem(key) as any;
-    if (asyncRouteList && asyncRouteList?.length > 0) {
-      return new Promise(resolve => {
-        handleAsyncRoutes(asyncRouteList);
-        resolve(router);
-      });
-    } else {
-      return new Promise(resolve => {
-        getAsyncRoutes().then(({ code, data }) => {
+  console.log("开始初始化路由...");
+
+  // 如果关闭了动态路由缓存，使用纯前端路由方案
+  if (!getConfig()?.CachingAsyncRoutes) {
+    console.log("CachingAsyncRoutes为false，使用纯前端路由方案");
+    console.log(
+      "静态路由数量:",
+      usePermissionStoreHook().constantMenus?.length || 0
+    );
+
+    // 直接使用静态路由生成菜单（传入空数组，handleWholeMenus会合并静态路由）
+    usePermissionStoreHook().handleWholeMenus([]);
+
+    return new Promise(resolve => {
+      console.log("路由初始化完成（纯前端模式）");
+      console.log(
+        "生成的菜单数量:",
+        usePermissionStoreHook().wholeMenus?.length || 0
+      );
+      resolve(router);
+    });
+  }
+
+  // 以下是原有的动态路由逻辑（CachingAsyncRoutes为true时执行）
+  console.log("CachingAsyncRoutes为true，使用动态路由方案");
+
+  // 开启动态路由缓存本地localStorage
+  const key = "async-routes";
+  const asyncRouteList = storageLocal().getItem(key) as any;
+  if (asyncRouteList && asyncRouteList?.length > 0) {
+    console.log("使用缓存的动态路由:", asyncRouteList);
+    return new Promise(resolve => {
+      handleAsyncRoutes(asyncRouteList);
+      resolve(router);
+    });
+  } else {
+    return new Promise(resolve => {
+      getAsyncRoutes()
+        .then(({ code, data }) => {
+          console.log("获取动态路由响应 - code:", code, "data:", data);
           if (code === 0) {
             handleAsyncRoutes(cloneDeep(data));
             storageLocal().setItem(key, data);
             resolve(router);
           } else {
+            console.warn("获取动态路由失败，code:", code);
             resolve(router);
           }
+        })
+        .catch(error => {
+          console.error("获取动态路由异常:", error);
+          resolve(router);
         });
-      });
-    }
-  } else {
-    return new Promise(resolve => {
-      getAsyncRoutes().then(({ code, data }) => {
-        if (code === 0) {
-          handleAsyncRoutes(cloneDeep(data));
-          resolve(router);
-        } else {
-          resolve(router);
-        }
-      });
     });
   }
 }
@@ -383,6 +418,8 @@ function hasAuth(value: string | Array<string>): boolean {
 }
 
 function handleTopMenu(route) {
+  if (!route) return null;
+
   if (route?.children && route.children.length > 1) {
     if (route.redirect) {
       return route.children.filter(cur => cur.path === route.redirect)[0];
@@ -396,9 +433,24 @@ function handleTopMenu(route) {
 
 /** 获取所有菜单中的第一个菜单（顶级菜单）*/
 function getTopMenu(tag = false): menuType {
-  const topMenu = handleTopMenu(
-    usePermissionStoreHook().wholeMenus[0]?.children[0]
-  );
+  const wholeMenus = usePermissionStoreHook().wholeMenus;
+  const firstMenu = wholeMenus?.[0];
+  const firstChild = firstMenu?.children?.[0];
+
+  const topMenu = handleTopMenu(firstChild);
+
+  if (!topMenu) {
+    console.warn("无法获取顶部菜单，返回默认路由");
+    // 返回一个安全的默认路由
+    const defaultRoute = {
+      path: "/",
+      name: "Home",
+      meta: { title: "首页" }
+    };
+    tag && useMultiTagsStoreHook().handleTags("push", defaultRoute);
+    return defaultRoute;
+  }
+
   tag && useMultiTagsStoreHook().handleTags("push", topMenu);
   return topMenu;
 }

@@ -76,6 +76,19 @@ menus:
   pureLoginLog: 登录日志
   pureOperationLog: 操作日志
   pureSystemLog: 系统日志
+  pureSysMonitor2: 采集器及表设备
+  pureOnlineUser2: 在线用户
+  pureLoginLog2: 登录日志
+  pureOperationLog2: 操作日志
+  pureSystemLog2: 表管理
+  pureCollector: 采集器管理
+  pureWaterMeter: 水表管理
+  pureMeterAdd: 添加表管理
+  pureAlarmManagement: 报警管理
+  pureAlarmEventQuery: 报警事件查询
+  pureAlarmRuleConfig: 报警规则配置
+  pureAlarmSystemSetting: 系统报警设置
+  pureAlarmUsageSetting: 报警用量设置
   pureCodeMirror: 代码编辑器
   pureMarkdown: Markdown
   pureEditor: 编辑器
@@ -128,7 +141,7 @@ menus:
   pureMenu1-3: 菜单1-3
   pureMenu2: 菜单二
   purePermission: 权限管理
-  purePermissionPage: 页面权限
+  purePermissionPage: 接口授权
   purePermissionButton: 按钮权限
   purePermissionButtonRouter: 路由返回按钮权限
   purePermissionButtonLogin: 登录接口返回按钮权限
@@ -240,6 +253,8 @@ login:
   purePassWordDifferentReg: 两次密码不一致!
   purePassWordUpdateReg: 修改密码成功
   pureLoginExpired: 登录已过期，请重新登录
+  pureClickRefresh: 点击刷新验证码
+  pureLoadingCode: 加载中
 tableBar:
   pureList: 列表
   pureLarge: 宽松
