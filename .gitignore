@@ -7,6 +7,14 @@ dist-ssr
 report.html
 vite.config.*.timestamp*
 
+# 环境变量（只提交 .env.example）
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+!.env.example
+
 # 本地临时/调试文件（避免 git add . 误提交）
 test-*.js
 test-*.html
