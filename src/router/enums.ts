@@ -29,7 +29,8 @@ const home = 0, // 平台规定只有 home 路由的 rank 才能为 0 ，所以�
   mind = 26,
   guide = 27,
   menuoverflow = 28,
-  businessStats = 29; // 用量统计
+  businessStats = 29, // 用量统计
+  sysMonitor = 17; // 系统监控
 
 export {
   home,
@@ -61,5 +62,6 @@ export {
   mind,
   guide,
   menuoverflow,
-  businessStats
+  businessStats,
+  sysMonitor
 };

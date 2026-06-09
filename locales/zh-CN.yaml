@@ -77,6 +77,7 @@ menus:
   pureLoginLog: 登录日志
   pureOperationLog: 操作日志
   pureSystemLog: 系统日志
+  pureErrorLog: 异常日志
   pureSysMonitor2: 采集器及表设备
   pureOnlineUser2: 在线用户
   pureLoginLog2: 登录日志
