@@ -78,6 +78,7 @@ menus:
   pureOperationLog: Operation Log
   pureSystemLog: System Log
   pureErrorLog: Error Log
+  pureMeterReadingData: Meter Reading Data
   pureSysMonitor2: System Monitor 2
   pureOnlineUser2: Online User
   pureLoginLog2: Login Log
