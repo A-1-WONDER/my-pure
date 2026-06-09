@@ -175,11 +175,10 @@ export const handleTree = (
   }
 
   function adaptToChildrenList(o: Record<string, any>) {
-    if (childrenListMap[o[config.id]] !== null) {
-      o[config.childrenList] = childrenListMap[o[config.id]];
-    }
-    if (o[config.childrenList]) {
-      for (const c of o[config.childrenList]) {
+    const childList = childrenListMap[o[config.id]];
+    if (childList != null && childList.length > 0) {
+      o[config.childrenList] = childList;
+      for (const c of childList) {
         adaptToChildrenList(c);
       }
     }

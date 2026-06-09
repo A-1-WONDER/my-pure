@@ -14,7 +14,7 @@ export default {
     {
       path: "/test/simple",
       component: () =>
-        import("@/views/business-stats/hourly-electric/index-simple.vue"),
+        import("@/views/business-stats/hourly-electric/index.vue"),
       name: "TestSimple",
       meta: {
         title: "简化测试",

@@ -44,18 +44,30 @@ const allowDemoFallback =
   import.meta.env.VITE_SIMPLE_ELECTRIC_SUMMARY === "true";
 
 const chartRef = ref();
+const overviewRef = ref<HTMLElement>();
 const tableRef = ref<{ doLayout?: () => void }>();
 let chartInstance: echarts.ECharts | null = null;
+let tableResizeObserver: ResizeObserver | null = null;
 const handleResize = () => {
   chartInstance?.resize();
 };
 
-/** 首页 compact 模式表格可视区域高度（px） */
-const compactTableMaxHeight = 160;
-
 const refreshTableLayout = async () => {
   await nextTick();
   tableRef.value?.doLayout?.();
+};
+
+const setupTableResizeObserver = () => {
+  tableResizeObserver?.disconnect();
+  tableResizeObserver = null;
+  if (!props.compact || props.dashboard) return;
+  const el = overviewRef.value;
+  if (!el || typeof ResizeObserver === "undefined") return;
+  tableResizeObserver = new ResizeObserver(() => {
+    handleResize();
+    tableRef.value?.doLayout?.();
+  });
+  tableResizeObserver.observe(el);
 };
 
 const dimensionOptions: Array<OptionsType> = [
@@ -659,11 +671,14 @@ onMounted(async () => {
   await nextTick();
   initChart();
   loadData();
+  setupTableResizeObserver();
   window.addEventListener("resize", handleResize);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
+  tableResizeObserver?.disconnect();
+  tableResizeObserver = null;
   chartInstance?.dispose();
   chartInstance = null;
 });
@@ -671,6 +686,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
+    ref="overviewRef"
     :class="[
       'energy-trend-overview',
       compact && !dashboard && 'energy-trend-overview--compact'
@@ -784,35 +800,32 @@ onBeforeUnmount(() => {
     />
 
     <div v-if="!dashboard" class="energy-trend-table-wrap">
-      <div
+      <el-table
         v-if="compact"
-        class="energy-trend-table-native-scroll"
-        :style="{ height: `${compactTableMaxHeight}px` }"
+        ref="tableRef"
+        v-loading="loading"
+        :data="dataList"
+        height="100%"
+        stripe
+        size="small"
+        class="energy-trend-table--fill"
       >
-        <el-table
-          ref="tableRef"
-          v-loading="loading"
-          :data="dataList"
-          stripe
-          size="small"
+        <el-table-column :label="tableLabel" prop="date" min-width="140" />
+        <el-table-column
+          label="总用电量(kWh)"
+          prop="totalConsumption"
+          min-width="140"
         >
-          <el-table-column :label="tableLabel" prop="date" min-width="140" />
-          <el-table-column
-            label="总用电量(kWh)"
-            prop="totalConsumption"
-            min-width="140"
-          >
-            <template #default="{ row }">
-              {{ Number(row.totalConsumption || 0).toFixed(2) }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="统计设备数量"
-            prop="deviceCount"
-            min-width="120"
-          />
-        </el-table>
-      </div>
+          <template #default="{ row }">
+            {{ Number(row.totalConsumption || 0).toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="统计设备数量"
+          prop="deviceCount"
+          min-width="120"
+        />
+      </el-table>
 
       <el-table
         v-else
@@ -861,38 +874,19 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.energy-trend-table-native-scroll {
-  overflow: hidden auto;
-  scrollbar-color: rgb(199 201 203) transparent;
-  scrollbar-width: thin;
+.energy-trend-overview--compact .energy-trend-table-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.energy-trend-table-native-scroll::-webkit-scrollbar {
-  width: 8px;
+.energy-trend-table--fill {
+  flex: 1;
+  min-height: 0;
 }
 
-.energy-trend-table-native-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.energy-trend-table-native-scroll::-webkit-scrollbar-thumb {
-  background-color: rgb(199 201 203);
-  border-radius: 4px;
-}
-
-.energy-trend-table-native-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(170 172 175);
-}
-
-.energy-trend-table-native-scroll :deep(.el-table) {
-  --el-table-border-color: var(--el-border-color-lighter);
-}
-
-.energy-trend-table-native-scroll :deep(.el-table__inner-wrapper),
-.energy-trend-table-native-scroll :deep(.el-table__body-wrapper),
-.energy-trend-table-native-scroll :deep(.el-scrollbar__wrap) {
-  height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
+.energy-trend-table--fill :deep(.el-table__inner-wrapper) {
+  height: 100% !important;
 }
 </style>

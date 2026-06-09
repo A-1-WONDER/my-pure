@@ -53,6 +53,17 @@ export default {
         title: $t("menus.pureDept"),
         roles: ["admin"]
       }
+    },
+    {
+      path: "/system/data-screen",
+      name: "SystemDataScreen",
+      redirect: "/data-screen",
+      meta: {
+        icon: "ri:presentation-line",
+        title: $t("menus.pureDataScreen"),
+        roles: ["admin"],
+        activePath: "/data-screen"
+      }
     }
   ]
 } satisfies RouteConfigsTable;

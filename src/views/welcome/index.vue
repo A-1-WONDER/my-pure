@@ -1141,6 +1141,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.welcome-card--trend :deep(.el-card__body) > .flex.justify-between {
+  flex-shrink: 0;
+}
+
 .welcome-card--trend :deep(.h-\[220px\]) {
   flex-shrink: 0;
   height: 220px !important;

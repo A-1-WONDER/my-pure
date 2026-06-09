@@ -16,6 +16,10 @@ interface FormItemProps {
     name?: string;
   };
   remark: string;
+  roleIds: number[];
+  jobIds: number[];
+  roleOptions?: Array<{ id: number; name: string }>;
+  jobOptions?: Array<{ id: number; name: string }>;
 }
 interface FormProps {
   formInline: FormItemProps;
@@ -27,7 +31,7 @@ interface RoleFormItemProps {
   /** 角色列表 */
   roleOptions: any[];
   /** 选中的角色列表 */
-  ids: Record<number, unknown>[];
+  ids: number[];
 }
 interface RoleFormProps {
   formInline: RoleFormItemProps;

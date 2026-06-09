@@ -71,6 +71,7 @@ menus:
   pureRole: Role Manage
   pureSystemMenu: Menu Manage
   pureDept: Dept Manage
+  pureDataScreen: Visual Dashboard
   pureSysMonitor: System Monitor
   pureOnlineUser: Online User
   pureLoginLog: Login Log

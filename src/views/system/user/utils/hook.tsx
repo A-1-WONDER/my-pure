@@ -2,7 +2,6 @@ import "./reset.css";
 import dayjs from "dayjs";
 import roleForm from "../form/role.vue";
 import editForm from "../form/index.vue";
-import { zxcvbn } from "@zxcvbn-ts/core";
 import { handleTree } from "@/utils/tree";
 import { message } from "@/utils/message";
 import userAvatar from "@/assets/user.jpg";
@@ -13,33 +12,26 @@ import ReCropperPreview from "@/components/ReCropperPreview";
 import type { FormItemProps, RoleFormItemProps } from "../utils/types";
 import {
   getKeyList,
-  isAllEmpty,
   hideTextAtIndex,
-  deviceDetection
+  deviceDetection,
+  storageLocal
 } from "@pureadmin/utils";
 import {
-  getRoleIds,
+  assignUserRoles,
+  createUser,
+  deleteUsers,
+  getAllJobList,
+  getAllRoleList,
   getDeptList,
+  getRoleIds,
   getUserList,
-  getAllRoleList
+  resetUserPassword,
+  updateUserRecord,
+  uploadUserAvatar
 } from "@/api/system";
-import {
-  ElForm,
-  ElInput,
-  ElFormItem,
-  ElProgress,
-  ElMessageBox
-} from "element-plus";
-import {
-  type Ref,
-  h,
-  ref,
-  toRaw,
-  watch,
-  computed,
-  reactive,
-  onMounted
-} from "vue";
+import { userKey, type DataInfo } from "@/utils/auth";
+import { ElMessageBox } from "element-plus";
+import { type Ref, h, ref, toRaw, computed, reactive, onMounted } from "vue";
 
 export function useUser(tableRef: Ref, treeRef: Ref) {
   const form = reactive({
@@ -50,7 +42,6 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
     status: ""
   });
   const formRef = ref();
-  const ruleFormRef = ref();
   const dataList = ref([]);
   const loading = ref(true);
   // 上传头像信息
@@ -170,22 +161,22 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       "dark:hover:text-primary!"
     ];
   });
-  // 重置的新密码
-  const pwdForm = reactive({
-    newPwd: ""
-  });
-  const pwdProgress = [
-    { color: "#e74242", text: "非常弱" },
-    { color: "#EFBD47", text: "弱" },
-    { color: "#ffa500", text: "一般" },
-    { color: "#1bbf1b", text: "强" },
-    { color: "#008000", text: "非常强" }
-  ];
-  // 当前密码强度（0-4）
-  const curScore = ref();
   const roleOptions = ref([]);
+  const jobOptions = ref([]);
 
-  function onChange({ row, index }) {
+  function getApiErrorMessage(error: unknown, fallback: string) {
+    const err = error as {
+      response?: { data?: { message?: string } };
+      message?: string;
+    };
+    return err?.response?.data?.message ?? err?.message ?? fallback;
+  }
+
+  function getCurrentUsername() {
+    return storageLocal().getItem<DataInfo<number>>(userKey)?.username ?? "";
+  }
+
+  async function onChange({ row, index }) {
     ElMessageBox.confirm(
       `确认要<strong>${
         row.status === 0 ? "停用" : "启用"
@@ -201,7 +192,7 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
         draggable: true
       }
     )
-      .then(() => {
+      .then(async () => {
         switchLoadMap.value[index] = Object.assign(
           {},
           switchLoadMap.value[index],
@@ -209,7 +200,17 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
             loading: true
           }
         );
-        setTimeout(() => {
+        try {
+          await updateUserRecord(row, {
+            enabled: row.status === 1
+          });
+          message("已成功修改用户状态", { type: "success" });
+        } catch (error) {
+          row.status === 0 ? (row.status = 1) : (row.status = 0);
+          message(getApiErrorMessage(error, "修改用户状态失败"), {
+            type: "error"
+          });
+        } finally {
           switchLoadMap.value[index] = Object.assign(
             {},
             switchLoadMap.value[index],
@@ -217,10 +218,7 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
               loading: false
             }
           );
-          message("已成功修改用户状态", {
-            type: "success"
-          });
-        }, 300);
+        }
       })
       .catch(() => {
         row.status === 0 ? (row.status = 1) : (row.status = 0);
@@ -231,9 +229,14 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
     console.log(row);
   }
 
-  function handleDelete(row) {
-    message(`您删除了用户编号为${row.id}的这条数据`, { type: "success" });
-    onSearch();
+  async function handleDelete(row) {
+    try {
+      await deleteUsers([row.id]);
+      message(`已删除用户 ${row.username}`, { type: "success" });
+      onSearch();
+    } catch (error) {
+      message(getApiErrorMessage(error, "删除用户失败"), { type: "error" });
+    }
   }
 
   function handleSizeChange(val: number) {
@@ -249,9 +252,8 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
 
   /** 当CheckBox选择项发生变化时会触发该事件 */
   function handleSelectionChange(val) {
-    selectedNum.value = val.length;
-    // 重置表格高度
-    tableRef.value.setAdaptive();
+    selectedNum.value = val?.length ?? 0;
+    tableRef.value?.setAdaptive?.();
   }
 
   /** 取消选择 */
@@ -262,15 +264,18 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
   }
 
   /** 批量删除 */
-  function onbatchDel() {
-    // 返回当前选中的行
+  async function onbatchDel() {
     const curSelected = tableRef.value.getTableRef().getSelectionRows();
-    // 接下来根据实际业务，通过选中行的某项数据，比如下面的id，调用接口进行批量删除
-    message(`已删除用户编号为 ${getKeyList(curSelected, "id")} 的数据`, {
-      type: "success"
-    });
-    tableRef.value.getTableRef().clearSelection();
-    onSearch();
+    const ids = getKeyList(curSelected, "id") as number[];
+    if (!ids.length) return;
+    try {
+      await deleteUsers(ids);
+      message(`已删除 ${ids.length} 个用户`, { type: "success" });
+      tableRef.value.getTableRef().clearSelection();
+      onSearch();
+    } catch (error) {
+      message(getApiErrorMessage(error, "批量删除失败"), { type: "error" });
+    }
   }
 
   async function onSearch() {
@@ -282,7 +287,7 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
         pageSize: pagination.pageSize
       });
       if (code === 0 && data) {
-        dataList.value = data.list;
+        dataList.value = data.list ?? [];
         pagination.total = data.total;
         pagination.pageSize = data.pageSize;
         pagination.currentPage = data.currentPage;
@@ -323,22 +328,30 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
     return newTreeList;
   }
 
-  function openDialog(title = "新增", row?: FormItemProps) {
+  function openDialog(
+    title = "新增",
+    row?: FormItemProps & Record<string, any>
+  ) {
     addDialog({
       title: `${title}用户`,
       props: {
         formInline: {
           title,
+          id: row?.id,
           higherDeptOptions: formatHigherDeptOptions(higherDeptOptions.value),
-          parentId: row?.dept.id ?? 0,
+          parentId: row?.dept?.id ?? row?.parentId ?? 0,
           nickname: row?.nickname ?? "",
           username: row?.username ?? "",
           password: row?.password ?? "",
           phone: row?.phone ?? "",
           email: row?.email ?? "",
-          sex: row?.sex ?? "",
+          sex: row?.sex ?? 0,
           status: row?.status ?? 1,
-          remark: row?.remark ?? ""
+          remark: row?.remark ?? "",
+          roleIds: row?.roleIds ?? row?.roles?.map(item => item.id) ?? [],
+          jobIds: row?.jobIds ?? row?.jobs?.map(item => item.id) ?? [],
+          roleOptions: roleOptions.value ?? [],
+          jobOptions: jobOptions.value ?? []
         }
       },
       width: "46%",
@@ -350,24 +363,35 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       beforeSure: (done, { options }) => {
         const FormRef = formRef.value.getRef();
         const curData = options.props.formInline as FormItemProps;
-        function chores() {
-          message(`您${title}了用户名称为${curData.username}的这条数据`, {
-            type: "success"
-          });
-          done(); // 关闭弹框
-          onSearch(); // 刷新表格数据
-        }
-        FormRef.validate(valid => {
-          if (valid) {
-            console.log("curData", curData);
-            // 表单规则校验通过
+        FormRef.validate(async valid => {
+          if (!valid) return;
+          try {
             if (title === "新增") {
-              // 实际开发先调用新增接口，再进行下面操作
-              chores();
+              await createUser(curData);
+              message(`已新增用户 ${curData.username}`, { type: "success" });
             } else {
-              // 实际开发先调用修改接口，再进行下面操作
-              chores();
+              await updateUserRecord(
+                { ...row, ...curData, id: curData.id ?? row?.id },
+                {
+                  deptId: Number(curData.parentId),
+                  nickname: curData.nickname,
+                  username: curData.username,
+                  phone: String(curData.phone),
+                  email: curData.email,
+                  sex: curData.sex,
+                  enabled: Number(curData.status) === 1,
+                  roleIds: curData.roleIds,
+                  jobIds: curData.jobIds
+                }
+              );
+              message(`已修改用户 ${curData.username}`, { type: "success" });
             }
+            done();
+            onSearch();
+          } catch (error) {
+            message(getApiErrorMessage(error, `${title}用户失败`), {
+              type: "error"
+            });
           }
         });
       }
@@ -388,94 +412,52 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
           imgSrc: row.avatar || userAvatar,
           onCropper: info => (avatarInfo.value = info)
         }),
-      beforeSure: done => {
-        console.log("裁剪后的图片信息：", avatarInfo.value);
-        // 根据实际业务使用avatarInfo.value和row里的某些字段去调用上传头像接口即可
-        done(); // 关闭弹框
-        onSearch(); // 刷新表格数据
+      beforeSure: async done => {
+        if (row.username !== getCurrentUsername()) {
+          message("后端仅支持修改当前登录用户自己的头像", { type: "warning" });
+          done();
+          return;
+        }
+        const blob = avatarInfo.value?.blob as Blob | undefined;
+        if (!blob) {
+          message("请先裁剪头像", { type: "warning" });
+          return;
+        }
+        try {
+          await uploadUserAvatar(blob);
+          message("头像上传成功", { type: "success" });
+          done();
+          onSearch();
+        } catch (error) {
+          message(getApiErrorMessage(error, "头像上传失败"), { type: "error" });
+        }
       },
       closeCallBack: () => cropRef.value.hidePopover()
     });
   }
 
-  watch(
-    pwdForm,
-    ({ newPwd }) =>
-      (curScore.value = isAllEmpty(newPwd) ? -1 : zxcvbn(newPwd).score)
-  );
-
-  /** 重置密码 */
+  /** 重置密码（后端固定重置为 123456） */
   function handleReset(row) {
-    addDialog({
-      title: `重置 ${row.username} 用户的密码`,
-      width: "30%",
-      draggable: true,
-      closeOnClickModal: false,
-      fullscreen: deviceDetection(),
-      contentRenderer: () => (
-        <>
-          <ElForm ref={ruleFormRef} model={pwdForm}>
-            <ElFormItem
-              prop="newPwd"
-              rules={[
-                {
-                  required: true,
-                  message: "请输入新密码",
-                  trigger: "blur"
-                }
-              ]}
-            >
-              <ElInput
-                clearable
-                show-password
-                type="password"
-                v-model={pwdForm.newPwd}
-                placeholder="请输入新密码"
-              />
-            </ElFormItem>
-          </ElForm>
-          <div class="my-4 flex">
-            {pwdProgress.map(({ color, text }, idx) => (
-              <div
-                class="w-[19vw]"
-                style={{ marginLeft: idx !== 0 ? "4px" : 0 }}
-              >
-                <ElProgress
-                  striped
-                  striped-flow
-                  duration={curScore.value === idx ? 6 : 0}
-                  percentage={curScore.value >= idx ? 100 : 0}
-                  color={color}
-                  stroke-width={10}
-                  show-text={false}
-                />
-                <p
-                  class="text-center"
-                  style={{ color: curScore.value === idx ? color : "" }}
-                >
-                  {text}
-                </p>
-              </div>
-            ))}
-          </div>
-        </>
-      ),
-      closeCallBack: () => (pwdForm.newPwd = ""),
-      beforeSure: done => {
-        ruleFormRef.value.validate(valid => {
-          if (valid) {
-            // 表单规则校验通过
-            message(`已成功重置 ${row.username} 用户的密码`, {
-              type: "success"
-            });
-            console.log(pwdForm.newPwd);
-            // 根据实际业务使用pwdForm.newPwd和row里的某些字段去调用重置用户密码接口即可
-            done(); // 关闭弹框
-            onSearch(); // 刷新表格数据
-          }
-        });
+    ElMessageBox.confirm(
+      `确认将用户 ${row.username} 的密码重置为 123456 吗？`,
+      "重置密码",
+      {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning"
       }
-    });
+    )
+      .then(async () => {
+        try {
+          await resetUserPassword([row.id]);
+          message(`已重置 ${row.username} 的密码为 123456`, {
+            type: "success"
+          });
+        } catch (error) {
+          message(getApiErrorMessage(error, "重置密码失败"), { type: "error" });
+        }
+      })
+      .catch(() => undefined);
   }
 
   /** 分配角色 */
@@ -498,11 +480,16 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       fullscreenIcon: true,
       closeOnClickModal: false,
       contentRenderer: () => h(roleForm),
-      beforeSure: (done, { options }) => {
+      beforeSure: async (done, { options }) => {
         const curData = options.props.formInline as RoleFormItemProps;
-        console.log("curIds", curData.ids);
-        // 根据实际业务使用curData.ids和row里的某些字段去调用修改角色接口即可
-        done(); // 关闭弹框
+        try {
+          await assignUserRoles(row, curData.ids ?? []);
+          message(`已更新 ${row.username} 的角色`, { type: "success" });
+          done();
+          onSearch();
+        } catch (error) {
+          message(getApiErrorMessage(error, "分配角色失败"), { type: "error" });
+        }
       }
     });
   }
@@ -527,6 +514,12 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       roleOptions.value = (await getAllRoleList()).data ?? [];
     } catch {
       roleOptions.value = [];
+    }
+
+    try {
+      jobOptions.value = (await getAllJobList()).data ?? [];
+    } catch {
+      jobOptions.value = [];
     }
   });
 

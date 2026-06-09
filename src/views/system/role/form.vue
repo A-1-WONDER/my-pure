@@ -6,7 +6,6 @@ import { FormProps } from "./utils/types";
 const props = withDefaults(defineProps<FormProps>(), {
   formInline: () => ({
     name: "",
-    code: "",
     remark: ""
   })
 });
@@ -33,14 +32,6 @@ defineExpose({ getRef });
         v-model="newFormInline.name"
         clearable
         placeholder="请输入角色名称"
-      />
-    </el-form-item>
-
-    <el-form-item label="角色标识" prop="code">
-      <el-input
-        v-model="newFormInline.code"
-        clearable
-        placeholder="请输入角色标识"
       />
     </el-form-item>
 

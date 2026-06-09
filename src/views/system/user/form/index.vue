@@ -17,7 +17,11 @@ const props = withDefaults(defineProps<FormProps>(), {
     email: "",
     sex: "",
     status: 1,
-    remark: ""
+    remark: "",
+    roleIds: [],
+    jobIds: [],
+    roleOptions: [],
+    jobOptions: []
   })
 });
 
@@ -75,11 +79,11 @@ defineExpose({ getRef });
         :xs="24"
         :sm="24"
       >
-        <el-form-item label="用户密码" prop="password">
+        <el-form-item label="初始密码">
           <el-input
-            v-model="newFormInline.password"
-            clearable
-            placeholder="请输入用户密码"
+            disabled
+            model-value="123456（由后端默认设置）"
+            placeholder="新增用户默认密码"
           />
         </el-form-item>
       </re-col>
@@ -121,7 +125,7 @@ defineExpose({ getRef });
       </re-col>
 
       <re-col :value="12" :xs="24" :sm="24">
-        <el-form-item label="归属部门">
+        <el-form-item label="归属部门" prop="parentId">
           <el-cascader
             v-model="newFormInline.parentId"
             class="w-full"
@@ -138,17 +142,50 @@ defineExpose({ getRef });
           >
             <template #default="{ node, data }">
               <span>{{ data.name }}</span>
-              <span v-if="!node.isLeaf"> ({{ data.children.length }}) </span>
+              <span v-if="!node.isLeaf">
+                ({{ data.children?.length ?? 0 }})
+              </span>
             </template>
           </el-cascader>
         </el-form-item>
       </re-col>
-      <re-col
-        v-if="newFormInline.title === '新增'"
-        :value="12"
-        :xs="24"
-        :sm="24"
-      >
+      <re-col :value="12" :xs="24" :sm="24">
+        <el-form-item label="用户角色" prop="roleIds">
+          <el-select
+            v-model="newFormInline.roleIds"
+            placeholder="请选择角色"
+            class="w-full"
+            clearable
+            multiple
+          >
+            <el-option
+              v-for="item in newFormInline.roleOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </re-col>
+      <re-col :value="12" :xs="24" :sm="24">
+        <el-form-item label="岗位" prop="jobIds">
+          <el-select
+            v-model="newFormInline.jobIds"
+            placeholder="请选择岗位"
+            class="w-full"
+            clearable
+            multiple
+          >
+            <el-option
+              v-for="item in newFormInline.jobOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </re-col>
+      <re-col :value="12" :xs="24" :sm="24">
         <el-form-item label="用户状态">
           <el-switch
             v-model="newFormInline.status"

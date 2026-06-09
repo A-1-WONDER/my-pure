@@ -89,7 +89,9 @@ defineExpose({ getRef });
           >
             <template #default="{ node, data }">
               <span>{{ transformI18n(data.title) }}</span>
-              <span v-if="!node.isLeaf"> ({{ data.children.length }}) </span>
+              <span v-if="!node.isLeaf">
+                ({{ data.children?.length ?? 0 }})
+              </span>
             </template>
           </el-cascader>
         </el-form-item>
