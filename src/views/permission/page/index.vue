@@ -1,29 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { getConfig } from "@/config";
 import { message } from "@/utils/message";
+import {
+  getExternalApiAuthSettings,
+  saveExternalApiAuthSettings,
+  testExternalApiConnection,
+  type ExternalApiAuthSettings
+} from "@/api/system";
 
 defineOptions({
   name: "PermissionPage"
 });
-
-const STORAGE_KEY = "permission:api-auth:settings";
-
-type ApiMode = "dev" | "prod";
-type SyncMode = "on" | "off";
-
-type ApiAuthSettings = {
-  authCode: string;
-  requestCount: number;
-  apiMode: ApiMode;
-  syncMode: SyncMode;
-  randomString: string;
-  defaultMeterType: string;
-  apiDocUrl: string;
-};
-
-const DEFAULT_RANDOM_STRING = "Bll9omQV1nWSDpLJ030JMAbW";
-const DEFAULT_REQUEST_COUNT = 1336;
 
 const meterTypeOptions = [
   { label: "单相", value: "single-phase" },
@@ -33,17 +21,27 @@ const meterTypeOptions = [
 ];
 
 const projectName = ref("能耗管理平台");
-const statusText = ref("正常");
 const saving = ref(false);
+const testing = ref(false);
+const loading = ref(false);
 
-const form = ref<ApiAuthSettings>({
+const form = ref<ExternalApiAuthSettings>({
   authCode: "",
-  requestCount: DEFAULT_REQUEST_COUNT,
+  requestCount: 0,
   apiMode: "dev",
   syncMode: "on",
-  randomString: DEFAULT_RANDOM_STRING,
+  randomString: "",
   defaultMeterType: "",
-  apiDocUrl: ""
+  apiDocUrl: "",
+  status: "正常",
+  baseUrl: ""
+});
+
+const statusTagType = computed(() => {
+  const status = form.value.status ?? "";
+  if (status.includes("正常")) return "success";
+  if (status.includes("关闭")) return "warning";
+  return "info";
 });
 
 const buildApiDocUrl = () => {
@@ -51,49 +49,40 @@ const buildApiDocUrl = () => {
   return `${String(target).replace(/\/$/, "")}/doc.html`;
 };
 
-const generateMockAuthCode = () => {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let code = "";
-  for (let i = 0; i < 24; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
-
-const loadSettings = () => {
+const loadSettings = async () => {
+  loading.value = true;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<ApiAuthSettings>;
-      form.value = {
-        authCode: parsed.authCode || generateMockAuthCode(),
-        requestCount: Number(parsed.requestCount) || DEFAULT_REQUEST_COUNT,
-        apiMode: parsed.apiMode === "prod" ? "prod" : "dev",
-        syncMode: parsed.syncMode === "off" ? "off" : "on",
-        randomString: parsed.randomString || DEFAULT_RANDOM_STRING,
-        defaultMeterType: parsed.defaultMeterType || "",
-        apiDocUrl: parsed.apiDocUrl || buildApiDocUrl()
-      };
-      return;
+    const config = await getConfig();
+    if (config?.Title) {
+      projectName.value = String(config.Title);
     }
+    const data = await getExternalApiAuthSettings({
+      projectName: projectName.value,
+      apiDocUrl: buildApiDocUrl()
+    });
+    form.value = {
+      ...form.value,
+      ...data,
+      apiDocUrl: data.apiDocUrl || buildApiDocUrl()
+    };
   } catch {
-    // ignore
+    message("加载接口授权配置失败，请确认已登录且具有 external:list 权限", {
+      type: "error"
+    });
+  } finally {
+    loading.value = false;
   }
-  form.value = {
-    authCode: generateMockAuthCode(),
-    requestCount: DEFAULT_REQUEST_COUNT,
-    apiMode: "dev",
-    syncMode: "on",
-    randomString: DEFAULT_RANDOM_STRING,
-    defaultMeterType: "",
-    apiDocUrl: buildApiDocUrl()
-  };
 };
 
 const handleSave = async () => {
   saving.value = true;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(form.value));
+    const data = await saveExternalApiAuthSettings({
+      ...form.value,
+      projectName: projectName.value,
+      apiDocUrl: form.value.apiDocUrl || buildApiDocUrl()
+    });
+    form.value = { ...form.value, ...data };
     message("接口授权配置已保存", { type: "success" });
   } catch {
     message("保存失败，请稍后重试", { type: "error" });
@@ -102,38 +91,63 @@ const handleSave = async () => {
   }
 };
 
-onMounted(async () => {
-  loadSettings();
+const handleTestConnection = async () => {
+  testing.value = true;
   try {
-    const config = await getConfig();
-    if (config?.Title) {
-      projectName.value = String(config.Title);
+    const result = await testExternalApiConnection();
+    if (result?.success === false) {
+      message(String(result.error || result.message || "连接测试失败"), {
+        type: "error"
+      });
+      return;
     }
+    message("第三方 API 连接测试成功", { type: "success" });
   } catch {
-    // keep default
+    message("连接测试失败", { type: "error" });
+  } finally {
+    testing.value = false;
   }
+};
+
+onMounted(() => {
+  loadSettings();
 });
 </script>
 
 <template>
   <div class="api-auth-page">
-    <el-card shadow="never" class="api-auth-card">
+    <el-card v-loading="loading" shadow="never" class="api-auth-card">
       <template #header>
-        <span class="text-base font-medium">接口授权</span>
+        <div class="api-auth-card__header">
+          <span class="text-base font-medium">接口授权</span>
+          <div class="api-auth-card__actions">
+            <el-button :loading="testing" @click="handleTestConnection">
+              测试连接
+            </el-button>
+            <el-button type="primary" :loading="saving" @click="handleSave">
+              保存
+            </el-button>
+          </div>
+        </div>
       </template>
 
-      <el-descriptions :column="1" border class="api-auth-desc">
-        <el-descriptions-item label="名称">
+      <el-descriptions :column="2" border class="api-auth-desc">
+        <el-descriptions-item label="名称" :span="2">
           {{ projectName }}
         </el-descriptions-item>
-        <el-descriptions-item label="授权码">
-          <span class="api-auth-code">{{ form.authCode }}</span>
+        <el-descriptions-item label="授权码" :span="2">
+          <span class="api-auth-code">{{ form.authCode || "未配置" }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="当前状态">
-          <el-tag type="success" effect="light">{{ statusText }}</el-tag>
+          <el-tag :type="statusTagType" effect="light">
+            {{ form.status || "未知" }}
+          </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="接口请求次数">
-          {{ form.requestCount }}
+          {{ form.requestCount ?? 0 }}
+        </el-descriptions-item>
+        <el-descriptions-item label="第三方 API 地址" :span="2">
+          {{ form.baseUrl || "-" }}
         </el-descriptions-item>
         <el-descriptions-item label="接口模式">
           <el-radio-group v-model="form.apiMode">
@@ -147,15 +161,15 @@ onMounted(async () => {
             <el-radio value="off">关闭同步</el-radio>
           </el-radio-group>
         </el-descriptions-item>
-        <el-descriptions-item label="随机字符串">
-          <span class="api-auth-mono">{{ form.randomString }}</span>
+        <el-descriptions-item label="随机字符串" :span="2">
+          <el-input v-model="form.randomString" clearable />
         </el-descriptions-item>
-        <el-descriptions-item label="默认电表型号">
+        <el-descriptions-item label="默认电表型号" :span="2">
           <el-select
             v-model="form.defaultMeterType"
             placeholder="请选择"
             clearable
-            class="w-full max-w-[280px]"
+            class="w-full max-w-[320px]"
           >
             <el-option
               v-for="item in meterTypeOptions"
@@ -165,7 +179,7 @@ onMounted(async () => {
             />
           </el-select>
         </el-descriptions-item>
-        <el-descriptions-item label="接口在线文档">
+        <el-descriptions-item label="接口在线文档" :span="2">
           <el-link
             :href="form.apiDocUrl"
             type="primary"
@@ -176,26 +190,53 @@ onMounted(async () => {
           </el-link>
         </el-descriptions-item>
       </el-descriptions>
-
-      <div class="api-auth-actions">
-        <el-button type="primary" :loading="saving" @click="handleSave">
-          保存
-        </el-button>
-      </div>
     </el-card>
   </div>
 </template>
 
 <style scoped lang="scss">
 .api-auth-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: calc(100vh - 130px);
+  min-height: 0;
   padding: 12px;
 }
 
 .api-auth-card {
-  max-width: 880px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+:deep(.api-auth-card .el-card__body) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.api-auth-card__header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.api-auth-card__actions {
+  display: flex;
+  gap: 8px;
 }
 
 .api-auth-desc {
+  flex: 1;
+  width: 100%;
+
   :deep(.el-descriptions__label) {
     width: 148px;
     font-weight: 500;
@@ -206,16 +247,8 @@ onMounted(async () => {
   }
 }
 
-.api-auth-code,
-.api-auth-mono {
+.api-auth-code {
   font-family: Consolas, "Courier New", monospace;
   letter-spacing: 0.02em;
-}
-
-.api-auth-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 4px;
-  margin-top: 20px;
 }
 </style>

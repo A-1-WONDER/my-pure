@@ -9,7 +9,16 @@ import { addDialog } from "@/components/ReDialog";
 import type { FormItemProps } from "../utils/types";
 import type { PaginationProps } from "@pureadmin/table";
 import { getKeyList, deviceDetection } from "@pureadmin/utils";
-import { getRoleList, getRoleMenu, getRoleMenuIds } from "@/api/system";
+import {
+  getRoleList,
+  getRoleMenu,
+  getRoleMenuIds,
+  createRole,
+  updateRole,
+  deleteRoles,
+  updateRoleMenus
+} from "@/api/system";
+import { toEladminRolePayload } from "@/api/eladmin-system-adapter";
 import { type Ref, reactive, ref, onMounted, h, toRaw, watch } from "vue";
 
 export function useRole(treeRef: Ref) {
@@ -145,8 +154,15 @@ export function useRole(treeRef: Ref) {
   }
 
   function handleDelete(row) {
-    message(`您删除了角色名称为${row.name}的这条数据`, { type: "success" });
-    onSearch();
+    ElMessageBox.confirm(`确认删除角色「${row.name}」吗？`, "系统提示", {
+      type: "warning"
+    })
+      .then(async () => {
+        await deleteRoles([row.id]);
+        message(`已删除角色 ${row.name}`, { type: "success" });
+        onSearch();
+      })
+      .catch(() => undefined);
   }
 
   function handleSizeChange(val: number) {
@@ -200,6 +216,7 @@ export function useRole(treeRef: Ref) {
       title: `${title}角色`,
       props: {
         formInline: {
+          id: row?.id,
           name: row?.name ?? "",
           code: row?.code ?? "",
           remark: row?.remark ?? ""
@@ -214,23 +231,25 @@ export function useRole(treeRef: Ref) {
       beforeSure: (done, { options }) => {
         const FormRef = formRef.value.getRef();
         const curData = options.props.formInline as FormItemProps;
-        function chores() {
-          message(`您${title}了角色名称为${curData.name}的这条数据`, {
-            type: "success"
-          });
-          done(); // 关闭弹框
-          onSearch(); // 刷新表格数据
-        }
-        FormRef.validate(valid => {
+        FormRef.validate(async valid => {
           if (valid) {
-            console.log("curData", curData);
-            // 表单规则校验通过
-            if (title === "新增") {
-              // 实际开发先调用新增接口，再进行下面操作
-              chores();
-            } else {
-              // 实际开发先调用修改接口，再进行下面操作
-              chores();
+            try {
+              const payload = toEladminRolePayload(
+                curData,
+                row?.id ?? curData.id
+              );
+              if (title === "新增") {
+                await createRole(payload as Record<string, unknown>);
+              } else {
+                await updateRole(payload as Record<string, unknown>);
+              }
+              message(`您${title}了角色名称为${curData.name}的这条数据`, {
+                type: "success"
+              });
+              done();
+              onSearch();
+            } catch {
+              message(`${title}角色失败`, { type: "error" });
             }
           }
         });
@@ -265,11 +284,12 @@ export function useRole(treeRef: Ref) {
   /** 菜单权限-保存 */
   function handleSave() {
     const { id, name } = curRow.value;
-    // 根据用户 id 调用实际项目中菜单权限修改接口
-    console.log(id, treeRef.value.getCheckedKeys());
-    message(`角色名称为${name}的菜单权限修改成功`, {
-      type: "success"
-    });
+    const menuIds = treeRef.value.getCheckedKeys(false) as number[];
+    updateRoleMenus(id, menuIds)
+      .then(() => {
+        message(`角色「${name}」的菜单权限已保存`, { type: "success" });
+      })
+      .catch(() => message("保存菜单权限失败", { type: "error" }));
   }
 
   /** 数据权限 可自行开发 */

@@ -172,6 +172,110 @@ export const getRoleMenuIds = async (data?: {
   return okResult(menus.map(m => m.id));
 };
 
+/** 新增用户 */
+export const createUser = (data: Record<string, unknown>) =>
+  http.request<void>("post", "/api/users", { data });
+
+/** 修改用户 */
+export const updateUser = (data: Record<string, unknown>) =>
+  http.request<void>("put", "/api/users", { data });
+
+/** 删除用户 */
+export const deleteUsers = (ids: number[]) =>
+  http.request<void>("delete", "/api/users", { data: ids });
+
+/** 重置用户密码（eladmin 默认重置为 123456） */
+export const resetUserPassword = (ids: number[]) =>
+  http.request<void>("put", "/api/users/resetPwd", { data: ids });
+
+/** 上传用户头像 */
+export const uploadUserAvatar = (file: File) => {
+  const formData = new FormData();
+  formData.append("avatar", file);
+  return http.request<{ avatar?: string }>("post", "/api/users/updateAvatar", {
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+};
+
+/** 新增角色 */
+export const createRole = (data: Record<string, unknown>) =>
+  http.request<void>("post", "/api/roles", { data });
+
+/** 修改角色 */
+export const updateRole = (data: Record<string, unknown>) =>
+  http.request<void>("put", "/api/roles", { data });
+
+/** 删除角色 */
+export const deleteRoles = (ids: number[]) =>
+  http.request<void>("delete", "/api/roles", { data: ids });
+
+/** 保存角色菜单权限 */
+export const updateRoleMenus = (roleId: number, menuIds: number[]) =>
+  http.request<void>("put", "/api/roles/menu", {
+    data: {
+      id: roleId,
+      menus: menuIds.map(id => ({ id }))
+    }
+  });
+
+/** 新增菜单 */
+export const createMenu = (data: Record<string, unknown>) =>
+  http.request<void>("post", "/api/menus", { data });
+
+/** 修改菜单 */
+export const updateMenu = (data: Record<string, unknown>) =>
+  http.request<void>("put", "/api/menus", { data });
+
+/** 删除菜单 */
+export const deleteMenus = (ids: number[]) =>
+  http.request<void>("delete", "/api/menus", { data: ids });
+
+/** 新增部门 */
+export const createDept = (data: Record<string, unknown>) =>
+  http.request<void>("post", "/api/dept", { data });
+
+/** 修改部门 */
+export const updateDept = (data: Record<string, unknown>) =>
+  http.request<void>("put", "/api/dept", { data });
+
+/** 删除部门 */
+export const deleteDepts = (ids: number[]) =>
+  http.request<void>("delete", "/api/dept", { data: ids });
+
+export type ExternalApiAuthSettings = {
+  projectName?: string;
+  authCode?: string;
+  status?: string;
+  requestCount?: number;
+  apiMode?: "dev" | "prod" | string;
+  syncMode?: "on" | "off" | string;
+  randomString?: string;
+  defaultMeterType?: string;
+  apiDocUrl?: string;
+  baseUrl?: string;
+  configEnabled?: boolean;
+};
+
+/** 获取接口授权配置 */
+export const getExternalApiAuthSettings = (params?: {
+  projectName?: string;
+  apiDocUrl?: string;
+}) =>
+  http.request<ExternalApiAuthSettings>("get", "/api/external/auth-settings", {
+    params
+  });
+
+/** 保存接口授权配置 */
+export const saveExternalApiAuthSettings = (data: ExternalApiAuthSettings) =>
+  http.request<ExternalApiAuthSettings>("put", "/api/external/auth-settings", {
+    data
+  });
+
+/** 测试第三方 API 连接 */
+export const testExternalApiConnection = () =>
+  http.request<Record<string, unknown>>("get", "/api/external/test-connection");
+
 /** 获取监控系统-电表标签列表 */
 export const getMeterTagsList = (data?: object) => {
   return http.request<ResultTable>("post", "/meter-tags", { data });

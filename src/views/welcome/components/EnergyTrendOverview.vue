@@ -45,13 +45,13 @@ const allowDemoFallback =
 
 const chartRef = ref();
 const tableRef = ref<{ doLayout?: () => void }>();
+const tableWrapRef = ref<HTMLElement>();
 let chartInstance: echarts.ECharts | null = null;
+let tableLayoutObserver: ResizeObserver | null = null;
 const handleResize = () => {
   chartInstance?.resize();
+  void refreshTableLayout();
 };
-
-/** 首页 compact 模式表格可视区域高度（px） */
-const compactTableMaxHeight = 160;
 
 const refreshTableLayout = async () => {
   await nextTick();
@@ -655,15 +655,30 @@ watch(
   { deep: true }
 );
 
+const setupTableLayoutObserver = () => {
+  tableLayoutObserver?.disconnect();
+  tableLayoutObserver = null;
+  if (!props.compact || props.dashboard || !tableWrapRef.value) return;
+
+  tableLayoutObserver = new ResizeObserver(() => {
+    handleResize();
+  });
+  tableLayoutObserver.observe(tableWrapRef.value);
+};
+
 onMounted(async () => {
   await nextTick();
   initChart();
   loadData();
+  await nextTick();
+  setupTableLayoutObserver();
   window.addEventListener("resize", handleResize);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
+  tableLayoutObserver?.disconnect();
+  tableLayoutObserver = null;
   chartInstance?.dispose();
   chartInstance = null;
 });
@@ -783,12 +798,8 @@ onBeforeUnmount(() => {
       ]"
     />
 
-    <div v-if="!dashboard" class="energy-trend-table-wrap">
-      <div
-        v-if="compact"
-        class="energy-trend-table-native-scroll"
-        :style="{ height: `${compactTableMaxHeight}px` }"
-      >
+    <div v-if="!dashboard" ref="tableWrapRef" class="energy-trend-table-wrap">
+      <div v-if="compact" class="energy-trend-table-native-scroll">
         <el-table
           ref="tableRef"
           v-loading="loading"
@@ -857,12 +868,21 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.energy-trend-table-wrap {
-  flex-shrink: 0;
+.energy-trend-overview--compact .energy-trend-table-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.energy-trend-overview--compact .energy-trend-table-native-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
 }
 
 .energy-trend-table-native-scroll {
-  overflow: hidden auto;
   scrollbar-color: rgb(199 201 203) transparent;
   scrollbar-width: thin;
 }

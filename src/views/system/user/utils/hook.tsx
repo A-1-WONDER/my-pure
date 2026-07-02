@@ -21,8 +21,14 @@ import {
   getRoleIds,
   getDeptList,
   getUserList,
-  getAllRoleList
+  getAllRoleList,
+  createUser,
+  updateUser,
+  deleteUsers,
+  resetUserPassword,
+  uploadUserAvatar
 } from "@/api/system";
+import { toEladminUserPayload } from "@/api/eladmin-system-adapter";
 import {
   ElForm,
   ElInput,
@@ -201,26 +207,27 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
         draggable: true
       }
     )
-      .then(() => {
+      .then(async () => {
         switchLoadMap.value[index] = Object.assign(
           {},
           switchLoadMap.value[index],
-          {
-            loading: true
-          }
+          { loading: true }
         );
-        setTimeout(() => {
+        try {
+          await updateUser(
+            toEladminUserPayload(row, { id: row.id }) as Record<string, unknown>
+          );
+          message("已成功修改用户状态", { type: "success" });
+        } catch {
+          row.status === 0 ? (row.status = 1) : (row.status = 0);
+          message("修改用户状态失败", { type: "error" });
+        } finally {
           switchLoadMap.value[index] = Object.assign(
             {},
             switchLoadMap.value[index],
-            {
-              loading: false
-            }
+            { loading: false }
           );
-          message("已成功修改用户状态", {
-            type: "success"
-          });
-        }, 300);
+        }
       })
       .catch(() => {
         row.status === 0 ? (row.status = 1) : (row.status = 0);
@@ -232,8 +239,15 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
   }
 
   function handleDelete(row) {
-    message(`您删除了用户编号为${row.id}的这条数据`, { type: "success" });
-    onSearch();
+    ElMessageBox.confirm(`确认删除用户「${row.username}」吗？`, "系统提示", {
+      type: "warning"
+    })
+      .then(async () => {
+        await deleteUsers([row.id]);
+        message(`已删除用户 ${row.username}`, { type: "success" });
+        onSearch();
+      })
+      .catch(() => undefined);
   }
 
   function handleSizeChange(val: number) {
@@ -263,14 +277,23 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
 
   /** 批量删除 */
   function onbatchDel() {
-    // 返回当前选中的行
     const curSelected = tableRef.value.getTableRef().getSelectionRows();
-    // 接下来根据实际业务，通过选中行的某项数据，比如下面的id，调用接口进行批量删除
-    message(`已删除用户编号为 ${getKeyList(curSelected, "id")} 的数据`, {
-      type: "success"
-    });
-    tableRef.value.getTableRef().clearSelection();
-    onSearch();
+    const ids = getKeyList(curSelected, "id") as number[];
+    if (!ids.length) return;
+    ElMessageBox.confirm(
+      `确认删除选中的 ${ids.length} 个用户吗？`,
+      "系统提示",
+      {
+        type: "warning"
+      }
+    )
+      .then(async () => {
+        await deleteUsers(ids);
+        message(`已删除 ${ids.length} 个用户`, { type: "success" });
+        tableRef.value.getTableRef().clearSelection();
+        onSearch();
+      })
+      .catch(() => undefined);
   }
 
   async function onSearch() {
@@ -329,6 +352,7 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       props: {
         formInline: {
           title,
+          id: row?.id,
           higherDeptOptions: formatHigherDeptOptions(higherDeptOptions.value),
           parentId: row?.dept.id ?? 0,
           nickname: row?.nickname ?? "",
@@ -350,23 +374,24 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       beforeSure: (done, { options }) => {
         const FormRef = formRef.value.getRef();
         const curData = options.props.formInline as FormItemProps;
-        function chores() {
-          message(`您${title}了用户名称为${curData.username}的这条数据`, {
-            type: "success"
-          });
-          done(); // 关闭弹框
-          onSearch(); // 刷新表格数据
-        }
-        FormRef.validate(valid => {
+        FormRef.validate(async valid => {
           if (valid) {
-            console.log("curData", curData);
-            // 表单规则校验通过
-            if (title === "新增") {
-              // 实际开发先调用新增接口，再进行下面操作
-              chores();
-            } else {
-              // 实际开发先调用修改接口，再进行下面操作
-              chores();
+            try {
+              const payload = toEladminUserPayload(curData, {
+                id: row?.id
+              }) as Record<string, unknown>;
+              if (title === "新增") {
+                await createUser(payload);
+              } else {
+                await updateUser(payload);
+              }
+              message(`您${title}了用户名称为${curData.username}的这条数据`, {
+                type: "success"
+              });
+              done();
+              onSearch();
+            } catch {
+              message(`${title}用户失败`, { type: "error" });
             }
           }
         });
@@ -388,11 +413,22 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
           imgSrc: row.avatar || userAvatar,
           onCropper: info => (avatarInfo.value = info)
         }),
-      beforeSure: done => {
-        console.log("裁剪后的图片信息：", avatarInfo.value);
-        // 根据实际业务使用avatarInfo.value和row里的某些字段去调用上传头像接口即可
-        done(); // 关闭弹框
-        onSearch(); // 刷新表格数据
+      beforeSure: async done => {
+        if (!avatarInfo.value?.blob) {
+          message("请先裁剪头像", { type: "warning" });
+          return;
+        }
+        try {
+          const file = new File([avatarInfo.value.blob], "avatar.png", {
+            type: avatarInfo.value.blob.type || "image/png"
+          });
+          await uploadUserAvatar(file);
+          message("头像上传成功", { type: "success" });
+          done();
+          onSearch();
+        } catch {
+          message("头像上传失败", { type: "error" });
+        }
       },
       closeCallBack: () => cropRef.value.hidePopover()
     });
@@ -462,16 +498,19 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       ),
       closeCallBack: () => (pwdForm.newPwd = ""),
       beforeSure: done => {
-        ruleFormRef.value.validate(valid => {
+        ruleFormRef.value.validate(async valid => {
           if (valid) {
-            // 表单规则校验通过
-            message(`已成功重置 ${row.username} 用户的密码`, {
-              type: "success"
-            });
-            console.log(pwdForm.newPwd);
-            // 根据实际业务使用pwdForm.newPwd和row里的某些字段去调用重置用户密码接口即可
-            done(); // 关闭弹框
-            onSearch(); // 刷新表格数据
+            try {
+              await resetUserPassword([row.id]);
+              message(`已将 ${row.username} 的密码重置为 123456`, {
+                type: "success"
+              });
+              pwdForm.newPwd = "";
+              done();
+              onSearch();
+            } catch {
+              message("重置密码失败", { type: "error" });
+            }
           }
         });
       }
@@ -500,9 +539,18 @@ export function useUser(tableRef: Ref, treeRef: Ref) {
       contentRenderer: () => h(roleForm),
       beforeSure: (done, { options }) => {
         const curData = options.props.formInline as RoleFormItemProps;
-        console.log("curIds", curData.ids);
-        // 根据实际业务使用curData.ids和row里的某些字段去调用修改角色接口即可
-        done(); // 关闭弹框
+        updateUser(
+          toEladminUserPayload(
+            { username: row.username },
+            { id: row.id, roleIds: curData.ids as number[] }
+          ) as Record<string, unknown>
+        )
+          .then(() => {
+            message(`已更新 ${row.username} 的角色`, { type: "success" });
+            done();
+            onSearch();
+          })
+          .catch(() => message("分配角色失败", { type: "error" }));
       }
     });
   }
