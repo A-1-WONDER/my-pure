@@ -152,9 +152,14 @@
               description="暂无告警记录"
               :image-size="80"
             />
-            <el-table v-else :data="alarmData" style="width: 100%">
+            <el-table
+              v-else
+              v-loading="alarmLoading"
+              :data="alarmData"
+              style="width: 100%"
+            >
               <el-table-column prop="time" label="时间" width="180" />
-              <el-table-column prop="type" label="告警类型" width="120">
+              <el-table-column prop="type" label="告警类型" width="140">
                 <template #default="{ row }">
                   <el-tag
                     :type="
@@ -185,7 +190,12 @@
 
         <el-tab-pane label="操作记录" name="operations" lazy>
           <div class="p-4">
-            <el-timeline>
+            <el-empty
+              v-if="!operationLoading && operationActivities.length === 0"
+              description="暂无操作记录"
+              :image-size="80"
+            />
+            <el-timeline v-else v-loading="operationLoading">
               <el-timeline-item
                 v-for="(activity, index) in operationActivities"
                 :key="index"
@@ -220,6 +230,9 @@ import {
 } from "vue";
 import { getCollectorDetail } from "@/api/collector";
 import { getDeviceMonthPower } from "@/api/business-stats";
+import { getAlarmEventQueryList } from "@/api/alarm-event-query";
+import { getOperationLogsList } from "@/api/system";
+import { getAlarmTypeLabel } from "@/views/nested/alarm/constants";
 
 const props = defineProps({
   data: {
@@ -562,45 +575,89 @@ type AlarmRow = {
   status: "resolved" | "pending" | string;
 };
 
-/** 告警记录：不接接口时为空，后续可 push 真实数据 */
+/** 告警记录 */
 const alarmData = ref<AlarmRow[]>([]);
+const alarmLoading = ref(false);
 
-/** 与采集器管理列表「创建时间」一致（与基本信息「安装时间」同源） */
-const operationCollectorCreateTs = computed(() => displayInstallTime.value);
+const operationActivities = ref<{ content: string; timestamp: string }[]>([]);
+const operationLoading = ref(false);
 
-const operationActivities = computed(() => {
-  const items: { content: string; timestamp: string }[] = [];
-  const createTs = operationCollectorCreateTs.value;
-
-  items.push({
-    content: `${props.config.name}安装完成`,
-    timestamp: createTs
-  });
-  items.push({
-    content: "首次抄表",
-    timestamp: createTs
-  });
-
-  const usageAlarm = alarmData.value.find(
-    row =>
-      row.type === "用量异常" || String(row.type || "").includes("用量异常")
-  );
-  if (usageAlarm?.time) {
-    items.push({
-      content: "用量异常告警处理",
-      timestamp: usageAlarm.time
-    });
+function mapAlarmStatus(status: unknown): "resolved" | "pending" {
+  if (
+    status === 1 ||
+    status === 2 ||
+    status === "resolved" ||
+    status === "handled"
+  ) {
+    return "resolved";
   }
+  return "pending";
+}
 
-  if (monthlyStatsGeneratedAt.value) {
-    items.push({
-      content: "月度用量统计生成",
-      timestamp: monthlyStatsGeneratedAt.value
-    });
+function mapAlarmLevel(level?: string) {
+  if (level === "urgent") return "high";
+  if (level === "important") return "medium";
+  return "low";
+}
+
+async function loadAlarmRecords() {
+  const meterId = listRow.value.id;
+  if (meterId == null || meterId === "") {
+    alarmData.value = [];
+    return;
   }
+  alarmLoading.value = true;
+  try {
+    const res = (await getAlarmEventQueryList({
+      deviceId: String(meterId),
+      meterNo: listRow.value.meterNo,
+      currentPage: 1,
+      pageSize: 20
+    })) as Record<string, any>;
+    const list =
+      res?.data?.list ?? res?.data?.content ?? res?.list ?? res?.content ?? [];
+    alarmData.value = (Array.isArray(list) ? list : []).map(
+      (row: Record<string, any>) => ({
+        time: formatTs(row.alarmTime) || "-",
+        type: getAlarmTypeLabel(row.alarmType ?? ""),
+        level: mapAlarmLevel(row.alarmLevel),
+        description:
+          row.handlingRemark ||
+          (row.alarmValue != null ? `当前值 ${row.alarmValue}` : "报警事件"),
+        status: mapAlarmStatus(row.alarmStatus)
+      })
+    );
+  } catch {
+    alarmData.value = [];
+  } finally {
+    alarmLoading.value = false;
+  }
+}
 
-  return items;
-});
+async function loadOperationRecords() {
+  const meterNo = listRow.value.meterNo;
+  if (!meterNo) {
+    operationActivities.value = [];
+    return;
+  }
+  operationLoading.value = true;
+  try {
+    const { code, data } = await getOperationLogsList({
+      blurry: String(meterNo),
+      page: 1,
+      pageSize: 20
+    });
+    const list = code === 0 ? (data?.list ?? []) : [];
+    operationActivities.value = list.map((row: Record<string, any>) => ({
+      content: row.description || row.method || "系统操作",
+      timestamp: formatTs(row.createTime) || "-"
+    }));
+  } catch {
+    operationActivities.value = [];
+  } finally {
+    operationLoading.value = false;
+  }
+}
 
 function syncRowData() {
   if (!props.data) return;
@@ -616,6 +673,7 @@ onMounted(() => {
   syncRowData();
   loadCollectorTimes();
   loadMonthlyStatistics();
+  loadAlarmRecords();
 });
 
 watch(
@@ -624,6 +682,10 @@ watch(
     syncRowData();
     loadCollectorTimes();
     loadMonthlyStatistics();
+    loadAlarmRecords();
+    if (activeTab.value === "operations") {
+      loadOperationRecords();
+    }
   },
   { deep: true }
 );
@@ -643,6 +705,12 @@ watch(
       await nextTick();
       updateMonthTrendChart();
     }
+    if (value === "alarms") {
+      loadAlarmRecords();
+    }
+    if (value === "operations") {
+      loadOperationRecords();
+    }
   }
 );
 
@@ -654,6 +722,12 @@ onUnmounted(() => {
 });
 
 const onRefresh = () => {
+  loadCollectorTimes();
+  loadMonthlyStatistics();
+  loadAlarmRecords();
+  if (activeTab.value === "operations") {
+    loadOperationRecords();
+  }
   emit("refresh");
 };
 

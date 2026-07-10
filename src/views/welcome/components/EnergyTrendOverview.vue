@@ -626,7 +626,7 @@ const loadData = async (options?: { force?: boolean }) => {
     message(
       isTimeout
         ? "用电量统计请求超时，请稍后重试或缩小查询时间范围"
-        : "加载首页用电量趋势失败",
+        : String(err?.message ?? "加载首页用电量趋势失败"),
       { type: isTimeout ? "warning" : "error" }
     );
     await nextTick();

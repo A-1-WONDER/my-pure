@@ -27,11 +27,19 @@ export function okTable<T>(
   };
 }
 
-function toAvatarUrl(avatarPath?: string): string {
+export function normalizeAvatarUrl(avatarPath?: string): string {
   if (!avatarPath) return "";
   if (/^https?:\/\//.test(avatarPath)) return avatarPath;
+  if (avatarPath.startsWith("/api/avatar/")) {
+    return avatarPath.replace(/^\/api\/avatar\//, "/avatar/");
+  }
+  if (avatarPath.startsWith("/avatar/")) return avatarPath;
   const fileName = avatarPath.split(/[\\/]/).pop();
-  return fileName ? `/api/avatar/${fileName}` : "";
+  return fileName && fileName.includes("avatar-") ? `/avatar/${fileName}` : "";
+}
+
+function toAvatarUrl(avatarPath?: string): string {
+  return normalizeAvatarUrl(avatarPath) || "";
 }
 
 function toParentId(pid?: number | null): number {

@@ -6,7 +6,12 @@ import { addDialog } from "@/components/ReDialog";
 import type { PaginationProps } from "@pureadmin/table";
 import { type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import { getKeyList } from "@pureadmin/utils";
-import { getMeterList, simpleMeterApi } from "@/api/meters";
+import {
+  getMeterList,
+  simpleMeterApi,
+  updateMeter,
+  deleteMeters
+} from "@/api/meters";
 import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
 
@@ -440,20 +445,78 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
     tableRef.value.getTableRef().clearSelection();
   }
 
-  function onbatchDel() {
-    const curSelected = tableRef.value.getTableRef().getSelectionRows();
-    message(`已删除序号为 ${getKeyList(curSelected, "id")} 的数据`, {
-      type: "success"
-    });
-    tableRef.value.getTableRef().clearSelection();
-    onSearch();
+  function buildMeterUpdatePayload(
+    row: Record<string, any>,
+    saveData: Record<string, any>
+  ) {
+    return {
+      id: row.id,
+      meterId: row.meterId ?? row.id,
+      meterNo: saveData.meterNo ?? row.meterNo,
+      meterType: row.meterType || meterType,
+      installAddress: saveData.address ?? row.installAddress ?? row.address,
+      remark: saveData.remark ?? row.remark,
+      status: saveData.status ?? row.status,
+      installTime: saveData.installTime ?? row.installTime,
+      collectorId: row.collectorId,
+      userId: row.userId,
+      enabled: row.enabled
+    };
   }
 
-  function clearAll() {
-    message(`已删除所有${config.name}数据`, {
-      type: "success"
-    });
-    onSearch();
+  async function onbatchDel() {
+    const curSelected = tableRef.value.getTableRef().getSelectionRows();
+    const ids = getKeyList(curSelected, "id")
+      .map(id => Number(id))
+      .filter(id => Number.isFinite(id));
+    if (!ids.length) {
+      message(`请先选择要删除的${config.name}`, { type: "warning" });
+      return;
+    }
+    try {
+      await deleteMeters(ids);
+      message(`已删除 ${ids.length} 条${config.name}数据`, { type: "success" });
+      tableRef.value.getTableRef().clearSelection();
+      selectedNum.value = 0;
+      onSearch();
+    } catch {
+      message("删除失败", { type: "error" });
+    }
+  }
+
+  async function clearAll() {
+    try {
+      const allIds: number[] = [];
+      let page = 1;
+      let total = 0;
+      const baseParams = {
+        meterType: meterType,
+        meterNo: form.meterNo || "",
+        status: form.status || "",
+        collectorId: form.collectorId || "",
+        userId: form.userId || "",
+        size: 200
+      };
+      do {
+        const response = await getMeterList({ ...baseParams, page });
+        const items = response?.content ?? response?.data?.content ?? [];
+        allIds.push(...items.map((item: { id: number }) => item.id));
+        total = response?.totalElements ?? response?.data?.totalElements ?? 0;
+        page += 1;
+      } while (allIds.length < total && page <= 50);
+      if (!allIds.length) {
+        message(`暂无${config.name}数据`, { type: "info" });
+        return;
+      }
+      await deleteMeters(allIds);
+      message(`已删除全部 ${allIds.length} 条${config.name}数据`, {
+        type: "success"
+      });
+      selectedNum.value = 0;
+      onSearch();
+    } catch {
+      message("清空失败", { type: "error" });
+    }
   }
 
   function onEdit(row) {
@@ -474,9 +537,14 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           }
         },
         on: {
-          save: _data => {
-            message("保存成功", { type: "success" });
-            onSearch();
+          save: async saveData => {
+            try {
+              await updateMeter(buildMeterUpdatePayload(row, saveData));
+              message("保存成功", { type: "success" });
+              onSearch();
+            } catch {
+              message("保存失败", { type: "error" });
+            }
           },
           close: () => {
             // 关闭对话框

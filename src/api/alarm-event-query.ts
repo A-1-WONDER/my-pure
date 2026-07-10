@@ -27,3 +27,10 @@ export const closeAlarmEvent = (data?: object) => {
 export const clearAllAlarmEvents = (data?: object) => {
   return http.request<Result>("post", "/api/alarm-event-clear-all", { data });
 };
+
+/** 批量删除报警事件 */
+export const batchDeleteAlarmEvents = (ids: number[]) => {
+  return http.request<Result>("post", "/api/alarm-event-batch-delete", {
+    data: { ids }
+  });
+};

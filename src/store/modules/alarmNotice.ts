@@ -16,7 +16,7 @@ export const useAlarmNoticeStore = defineStore("pure-alarm-notice", {
   getters: {
     alarmNoticeCount: state => state.items.length,
     /** 未读报警条数，用于铃铛角标；打开下拉阅读后清零 */
-    alarmUnreadCount: state => state.items.filter(i => i.read === false).length
+    alarmUnreadCount: state => state.items.filter(i => i.read !== true).length
   },
   actions: {
     hydrateFromStorage() {
@@ -49,10 +49,8 @@ export const useAlarmNoticeStore = defineStore("pure-alarm-notice", {
     },
     /** 用户已打开通知面板，全部标为已读并隐藏角标 */
     markAlarmNoticesRead() {
-      if (!this.items.some(i => i.read === false)) return;
-      this.items = this.items.map(i =>
-        i.read === false ? { ...i, read: true } : i
-      );
+      if (!this.items.some(i => i.read !== true)) return;
+      this.items = this.items.map(i => ({ ...i, read: true }));
       this.persistItems();
     },
     /** 清空报警通知（不影响已记录的事件 ID，避免重复弹同一历史事件） */

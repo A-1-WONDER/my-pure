@@ -7,6 +7,7 @@ import type { PaginationProps } from "@pureadmin/table";
 import { type Ref, reactive, ref, onMounted } from "vue";
 import { getKeyList } from "@pureadmin/utils";
 import {
+  batchDeleteAlarmEvents,
   clearAllAlarmEvents,
   getAlarmEventQueryList,
   processAlarmEvent
@@ -236,13 +237,31 @@ export function useAlarmEventQuery(tableRef: Ref) {
     tableRef.value.getTableRef().clearSelection();
   }
 
-  function onbatchDel() {
+  async function onbatchDel() {
     const curSelected = tableRef.value.getTableRef().getSelectionRows();
-    message(`已删除序号为 ${getKeyList(curSelected, "id")} 的报警事件`, {
-      type: "success"
-    });
-    tableRef.value.getTableRef().clearSelection();
-    onSearch();
+    const ids = getKeyList(curSelected, "id")
+      .map(id => Number(id))
+      .filter(id => Number.isFinite(id));
+    if (!ids.length) {
+      message("请先选择要删除的报警事件", { type: "warning" });
+      return;
+    }
+    try {
+      const res = (await batchDeleteAlarmEvents(ids)) as Record<string, any>;
+      const ok = res?.code === 0 || res?.success === true;
+      if (ok) {
+        message(`已删除 ${ids.length} 条报警事件`, { type: "success" });
+        tableRef.value.getTableRef().clearSelection();
+        selectedNum.value = 0;
+        await onSearch();
+      } else {
+        message(String(res?.msg ?? res?.message ?? "删除失败"), {
+          type: "warning"
+        });
+      }
+    } catch {
+      message("删除失败", { type: "error" });
+    }
   }
 
   async function clearAll() {

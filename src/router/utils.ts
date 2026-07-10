@@ -29,6 +29,41 @@ const modulesRoutes = import.meta.glob("/src/views/**/*.{vue,tsx}");
 // 动态路由
 import { getAsyncRoutes } from "@/api/routes";
 
+/** 数据库菜单中遗留路径 → 当前有效路由 */
+const LEGACY_ROUTE_ALIASES: Record<
+  string,
+  { path: string; component: string; name?: string }
+> = {
+  "/monitor2/water-meter": {
+    path: "/monitor2/electric-meter",
+    component: "monitor2/meter-dynamic/index",
+    name: "Monitor2ElectricMeter"
+  },
+  "/monitor2/meter-add": {
+    path: "/monitor2/electric-meter",
+    component: "monitor2/meter-dynamic/index",
+    name: "Monitor2ElectricMeter"
+  },
+  "/monitor2/system-logs": {
+    path: "/monitor/operation-logs",
+    component: "monitor/logs/operation/index",
+    name: "OperationLog"
+  },
+  "/monitor/online-user": {
+    path: "/monitor/operation-logs",
+    component: "monitor/logs/operation/index",
+    name: "OperationLog"
+  }
+};
+
+function normalizeLegacyRoute(route: RouteRecordRaw) {
+  const alias = LEGACY_ROUTE_ALIASES[route.path];
+  if (!alias) return;
+  route.path = alias.path;
+  route.component = alias.component;
+  if (alias.name) route.name = alias.name;
+}
+
 function handRank(routeInfo: any) {
   const { name, path, parentId, meta } = routeInfo;
   return isAllEmpty(parentId)
@@ -353,6 +388,7 @@ function addAsyncRoutes(arrRoutes: Array<RouteRecordRaw>) {
   if (!arrRoutes || !arrRoutes.length) return;
   const modulesRoutesKeys = Object.keys(modulesRoutes);
   arrRoutes.forEach((v: RouteRecordRaw) => {
+    normalizeLegacyRoute(v);
     // 将backstage属性加入meta，标识此路由为后端返回路由
     v.meta.backstage = true;
     // 父级的redirect属性取值：如果子级存在且父级的redirect属性不存在，默认取第一个子级的path；如果子级存在且父级的redirect属性存在，取存在的redirect属性，会覆盖默认值

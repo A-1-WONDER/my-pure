@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import dayjs from "dayjs";
-import { getUserLoginLogs, type UserSysLogItem } from "@/api/user";
+import { getWelcomeLoginInfo } from "@/api/user";
 import ReCol from "@/components/ReCol";
 import { useDark } from "./utils";
 import { ReNormalCountTo } from "@/components/ReCountTo";
@@ -42,9 +42,6 @@ const lastLogin = ref({ time: "—", ip: "—", address: "—" });
 const recentLoginIp = ref("—");
 const recentLoginAddress = ref("—");
 
-const isLoginLog = (row: UserSysLogItem) =>
-  String(row?.description ?? "").includes("登录");
-
 const formatDaysAgo = (ts?: string | null) => {
   if (!ts) return "—";
   const d = dayjs(ts);
@@ -77,19 +74,14 @@ const recentLoginTimeDisplay = computed(() => {
 const loadLoginInfo = async () => {
   loginInfoLoading.value = true;
   try {
-    const res = await getUserLoginLogs({ page: 1, size: 30 });
-    const rows = (Array.isArray(res?.content) ? res.content : []).filter(
-      isLoginLog
-    );
-    const recent = rows[0];
-    const last = rows[1];
-    recentLoginRawTime.value = recent?.createTime ?? null;
-    recentLoginIp.value = recent?.requestIp?.trim() || "—";
-    recentLoginAddress.value = recent?.address?.trim() || "—";
+    const info = await getWelcomeLoginInfo();
+    recentLoginRawTime.value = info.recent.rawTime;
+    recentLoginIp.value = info.recent.ip;
+    recentLoginAddress.value = info.recent.address;
     lastLogin.value = {
-      time: formatDaysAgo(last?.createTime),
-      ip: last?.requestIp?.trim() || "—",
-      address: last?.address?.trim() || "—"
+      time: formatDaysAgo(info.last.rawTime),
+      ip: info.last.ip,
+      address: info.last.address
     };
   } catch (error) {
     console.error("加载登录信息失败:", error);

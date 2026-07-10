@@ -6,60 +6,21 @@ import {
   type MeterReadingRecord
 } from "@/api/system";
 import type { PaginationProps } from "@pureadmin/table";
-import {
-  type Ref,
-  reactive,
-  ref,
-  onMounted,
-  onUnmounted,
-  toRaw
-} from "vue";
+import { type Ref, reactive, ref, onMounted, toRaw } from "vue";
 
-const formatAgoPrecise = (ts?: string | null) => {
-  if (!ts) return "—";
-  const d = dayjs(ts);
-  if (!d.isValid()) return "—";
-  let sec = dayjs().diff(d, "second");
-  if (sec < 0) sec = 0;
-  if (sec < 1) return "刚刚";
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h > 0) return `${h}小时${m}分${s}秒前`;
-  if (m > 0) return `${m}分${s}秒前`;
-  return `${s}秒前`;
+const readingTypeLabel: Record<string, string> = {
+  auto: "自动抄表",
+  manual: "手动录入"
 };
 
-const formatDuration = (ms?: number) => {
-  if (ms == null || ms <= 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}秒`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}分${s}秒`;
-};
-
-function DualLineCell({ primary, secondary }: { primary: string; secondary: string }) {
-  return (
-    <div class="flex flex-col items-center leading-tight">
-      <span>{primary || "—"}</span>
-      <span class="text-xs text-[var(--el-text-color-secondary)] mt-0.5">
-        {secondary || "—"}
-      </span>
-    </div>
-  );
-}
-
-export function useMeterReading(tableRef: Ref) {
+export function useMeterReading(_tableRef: Ref) {
   const form = reactive({
-    blurry: "",
+    meterId: "",
+    readingType: "",
     readingTime: ""
   });
   const dataList = ref<MeterReadingRecord[]>([]);
   const loading = ref(true);
-  const timeTick = ref(0);
-  let timer: ReturnType<typeof setInterval> | null = null;
 
   const pagination = reactive<PaginationProps>({
     total: 0,
@@ -70,61 +31,51 @@ export function useMeterReading(tableRef: Ref) {
 
   const columns: TableColumnList = [
     {
-      label: "采集器编号",
-      prop: "collectorNo",
-      minWidth: 140,
-      cellRenderer: ({ row }) => (
-        <DualLineCell primary={row.collectorNo} secondary={row.deviceNo} />
-      )
+      label: "表具ID",
+      prop: "meterId",
+      minWidth: 100
     },
     {
-      label: "通讯地址",
-      prop: "meterAddress",
-      minWidth: 140,
-      cellRenderer: ({ row }) => (
-        <DualLineCell primary={row.meterAddress} secondary={row.deviceNo} />
-      )
-    },
-    {
-      label: "用户",
-      prop: "userRemark",
+      label: "读数值",
+      prop: "readingValue",
       minWidth: 120,
-      showOverflowTooltip: true,
-      formatter: ({ userRemark }) => userRemark || "—"
+      formatter: ({ readingValue }) =>
+        readingValue != null ? `${readingValue} kWh` : "—"
     },
     {
-      label: "功能",
-      prop: "functionType",
-      minWidth: 130,
-      formatter: ({ functionType }) => functionType || "—"
-    },
-    {
-      label: "结果",
-      prop: "resultValue",
-      minWidth: 120,
-      formatter: ({ resultValue }) =>
-        resultValue != null ? `${resultValue} kWh` : "—"
-    },
-    {
-      label: "完成时间",
-      prop: "finishedTime",
-      minWidth: 150,
-      cellRenderer: ({ row }) => {
-        void timeTick.value;
-        return <span>{formatAgoPrecise(row.finishedTime)}</span>;
-      }
-    },
-    {
-      label: "用时",
-      prop: "durationMs",
-      minWidth: 90,
-      formatter: ({ durationMs }) => formatDuration(durationMs)
-    },
-    {
-      label: "命令发送次数",
-      prop: "sendCount",
+      label: "读数类型",
+      prop: "readingType",
       minWidth: 110,
-      formatter: ({ sendCount }) => (sendCount != null ? String(sendCount) : "—")
+      formatter: ({ readingType }) =>
+        readingTypeLabel[readingType] ?? readingType ?? "—"
+    },
+    {
+      label: "读数时间",
+      prop: "readingTime",
+      minWidth: 170,
+      formatter: ({ readingTime }) =>
+        readingTime ? dayjs(readingTime).format("YYYY-MM-DD HH:mm:ss") : "—"
+    },
+    {
+      label: "采集器ID",
+      prop: "collectorId",
+      minWidth: 100,
+      formatter: ({ collectorId }) =>
+        collectorId != null ? String(collectorId) : "—"
+    },
+    {
+      label: "备注",
+      prop: "remark",
+      minWidth: 140,
+      showOverflowTooltip: true,
+      formatter: ({ remark }) => remark || "—"
+    },
+    {
+      label: "创建时间",
+      prop: "createdAt",
+      minWidth: 170,
+      formatter: ({ createdAt }) =>
+        createdAt ? dayjs(createdAt).format("YYYY-MM-DD HH:mm:ss") : "—"
     },
     {
       label: "操作",
@@ -165,6 +116,7 @@ export function useMeterReading(tableRef: Ref) {
     } catch {
       dataList.value = [];
       pagination.total = 0;
+      message("查询抄表数据失败", { type: "error" });
     } finally {
       loading.value = false;
     }
@@ -189,13 +141,6 @@ export function useMeterReading(tableRef: Ref) {
 
   onMounted(() => {
     onSearch();
-    timer = setInterval(() => {
-      timeTick.value += 1;
-    }, 1000);
-  });
-
-  onUnmounted(() => {
-    if (timer) clearInterval(timer);
   });
 
   return {

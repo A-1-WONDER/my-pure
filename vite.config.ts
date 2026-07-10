@@ -41,6 +41,8 @@ export default ({ mode }: ConfigEnv): UserConfigExport => {
       proxy: {
         "/api": proxyToBackend,
         "/auth": proxyToBackend,
+        "/avatar": proxyToBackend,
+        "/api/avatar": proxyToBackend,
         // 报警模块（根路径与 /api 前缀后端均支持）
         "/alarm-rule-save": proxyToBackend,
         "/alarm-rule-list": proxyToBackend,

@@ -1,43 +1,95 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { message } from "@/utils/message";
+import {
+  getAlarmSystemSetting,
+  saveAlarmSystemSetting,
+  type AlarmSystemSetting
+} from "@/api/alarm";
 
 defineOptions({
   name: "AlarmSystemSetting"
 });
 
-/** 电表异常报警总开关（仅前端展示，不保存） */
+const loading = ref(false);
+const saving = ref(false);
 const electricAlarmEnabled = ref(true);
-/** 子项：断电报警 */
 const powerOffAlarm = ref(true);
-/** 子项：通讯设备长时间离线报警 */
 const longOfflineAlarm = ref(true);
+
+function applySetting(data?: Partial<AlarmSystemSetting>) {
+  electricAlarmEnabled.value = data?.electricAlarmEnabled !== false;
+  powerOffAlarm.value = data?.powerOffAlarm !== false;
+  longOfflineAlarm.value = data?.longOfflineAlarm !== false;
+}
+
+async function loadSetting() {
+  loading.value = true;
+  try {
+    const res = (await getAlarmSystemSetting()) as Record<string, any>;
+    const ok = res?.code === 0 || res?.success === true;
+    const data = (res?.data ?? res) as AlarmSystemSetting;
+    if (ok) {
+      applySetting(data);
+    }
+  } catch {
+    message("加载系统报警设置失败", { type: "error" });
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function onSave() {
+  saving.value = true;
+  try {
+    const payload: AlarmSystemSetting = {
+      electricAlarmEnabled: electricAlarmEnabled.value,
+      powerOffAlarm: electricAlarmEnabled.value ? powerOffAlarm.value : false,
+      longOfflineAlarm: electricAlarmEnabled.value
+        ? longOfflineAlarm.value
+        : false
+    };
+    const res = (await saveAlarmSystemSetting(payload)) as Record<string, any>;
+    const ok = res?.code === 0 || res?.success === true;
+    if (ok) {
+      applySetting((res?.data ?? payload) as AlarmSystemSetting);
+      message("系统报警设置已保存", { type: "success" });
+    } else {
+      message(String(res?.msg ?? res?.message ?? "保存失败"), {
+        type: "warning"
+      });
+    }
+  } catch {
+    message("保存失败", { type: "error" });
+  } finally {
+    saving.value = false;
+  }
+}
+
+watch(electricAlarmEnabled, enabled => {
+  if (!enabled) {
+    powerOffAlarm.value = false;
+    longOfflineAlarm.value = false;
+  }
+});
+
+onMounted(() => {
+  loadSetting();
+});
 </script>
 
 <template>
-  <div class="main">
+  <div v-loading="loading" class="main">
     <div class="header mb-6">
       <h2 class="text-xl font-bold dark:text-white">系统报警设置</h2>
       <p class="text-gray-500 dark:text-gray-400 mt-2">
-        本页仅配置<strong class="text-gray-700 dark:text-gray-200"
+        配置<strong class="text-gray-700 dark:text-gray-200"
           >电表异常报警</strong
-        >相关开关； 报警产生后会在框架右上角<strong
-          class="text-gray-700 dark:text-gray-200"
-          >消息铃铛</strong
-        >的「通知」页签中展示<strong class="text-gray-700 dark:text-gray-200"
-          >站内提醒</strong
-        >（由报警事件接口轮询同步）。 本页<strong>不含 APP 推送</strong
-        >、短信等其它渠道。
+        >
+        的全局开关。关闭后对应类型的规则在评估时将不会触发新报警事件。
+        报警产生后仍会在右上角消息铃铛的「通知」页签展示站内提醒。
       </p>
     </div>
-
-    <el-alert
-      class="mb-6 max-w-[720px]"
-      type="info"
-      :closable="false"
-      show-icon
-      title="说明"
-      description="以下开关与选项仅用于界面展示，不会提交到服务器保存，刷新页面后可能恢复为默认状态。"
-    />
 
     <div
       class="config-section bg-bg_color p-6 rounded-lg shadow-sm border border-[var(--el-border-color)] max-w-[720px]"
@@ -47,21 +99,24 @@ const longOfflineAlarm = ref(true);
         <el-switch v-model="electricAlarmEnabled" />
       </div>
       <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-        开启后，下列子项在业务侧生效时才会触发报警逻辑（本页<strong>不</strong>提供
-        APP 推送，也不会在此保存到后端）。
+        关闭总开关后，所有电表类报警规则将暂停触发（已产生的历史事件不受影响）。
       </p>
 
-      <div class="sub-options space-y-4 pl-1">
+      <div class="sub-options space-y-4 pl-1 mb-6">
         <el-checkbox v-model="powerOffAlarm" :disabled="!electricAlarmEnabled">
-          断电报警
+          断电报警（功率异常 / instant_power 类规则）
         </el-checkbox>
         <el-checkbox
           v-model="longOfflineAlarm"
           :disabled="!electricAlarmEnabled"
         >
-          通讯设备长时间离线报警
+          通讯设备长时间离线报警（离线 / 通信超时类规则）
         </el-checkbox>
       </div>
+
+      <el-button type="primary" :loading="saving" @click="onSave">
+        保存设置
+      </el-button>
     </div>
   </div>
 </template>

@@ -103,20 +103,25 @@ export const addCollector = (data?: object) => {
 
 /**
  * 修改采集器
- * PUT /api/collector/{id}
+ * PUT /api/collectors
  * 权限：collector:edit
  */
-export const editCollector = (id: number, data?: object) => {
-  return http.request<Result>("put", `/api/collectors/${id}`, { data });
+export const editCollector = (data: object) => {
+  return http.request<Result>("put", "/api/collectors", { data });
 };
 
 /**
- * 删除采集器
- * DELETE /api/collector/{id}
+ * 删除采集器（支持批量）
+ * DELETE /api/collectors
  * 权限：collector:del
  */
+export const deleteCollectors = (ids: number[]) => {
+  return http.request<Result>("delete", "/api/collectors", { data: ids });
+};
+
+/** @deprecated 请使用 deleteCollectors */
 export const deleteCollector = (id: number) => {
-  return http.request<Result>("delete", `/api/collectors/${id}`);
+  return deleteCollectors([id]);
 };
 
 /**

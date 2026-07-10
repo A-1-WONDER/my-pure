@@ -259,13 +259,12 @@ export const extractDayPowerValueFromResponse = (
     "totalEnergy"
   ]);
 
-const isEnergySummaryDto = (v: unknown): v is EnergyStatisticsSummaryDto => {
+const isEnergySummaryDtoShape = (
+  v: unknown
+): v is EnergyStatisticsSummaryDto => {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  // 兼容后端返回数字 1 或字符串 "1"
-  const ok = Number(o.status) === 1;
   return (
-    ok &&
     typeof o.dimension === "string" &&
     o.data !== undefined &&
     typeof o.data === "object"
@@ -282,10 +281,10 @@ export const unwrapEnergyStatisticsSummaryResponse = (
   response: Record<string, any> | null | undefined
 ): EnergyStatisticsSummaryDto | null => {
   if (!response || typeof response !== "object") return null;
-  if (isEnergySummaryDto(response)) return response;
+  if (isEnergySummaryDtoShape(response)) return response;
   const inner = response.data;
-  if (isEnergySummaryDto(inner)) return inner;
-  if (inner?.data && isEnergySummaryDto(inner.data)) return inner.data;
+  if (isEnergySummaryDtoShape(inner)) return inner;
+  if (inner?.data && isEnergySummaryDtoShape(inner.data)) return inner.data;
   return null;
 };
 

@@ -15,47 +15,21 @@ import {
 } from "@/api/user";
 import { useMultiTagsStoreHook } from "./multiTags";
 import { type DataInfo, setToken, removeToken, userKey } from "@/utils/auth";
+import { normalizeAvatarUrl } from "@/api/eladmin-system-adapter";
 
 /**
- * 处理头像路径
- * 将本地文件路径转换为可访问的URL或使用默认头像
+ * 处理头像路径（兼容 eladmin 本地路径与历史 /api/avatar 缓存）
  */
 function processAvatarPath(avatarPath: string | undefined): string {
-  if (!avatarPath) return "";
-
-  // 如果是本地文件路径（包含盘符或反斜杠）
-  if (
-    avatarPath.includes("\\") ||
-    avatarPath.includes(":\\") ||
-    avatarPath.includes("/")
-  ) {
-    console.warn("检测到本地文件路径头像:", avatarPath);
-
-    // 尝试从路径中提取文件名
-    const fileName = avatarPath.split(/[\\/]/).pop();
-    if (fileName) {
-      // 如果是eladmin的avatar目录文件，尝试通过API访问
-      if (fileName.includes("avatar-")) {
-        // 返回API路径（需要后端提供头像访问接口）
-        // 注意：eladmin的头像接口可能需要认证
-        const avatarUrl = `/api/avatar/${fileName}`;
-        console.log("生成的头像URL:", avatarUrl);
-        return avatarUrl;
-      }
-    }
-
-    // 无法处理本地路径，返回空或默认头像
-    return "";
-  }
-
-  // 如果是URL或相对路径，直接返回
-  return avatarPath;
+  return normalizeAvatarUrl(avatarPath);
 }
 
 export const useUserStore = defineStore("pure-user", {
   state: (): userType => ({
     // 头像
-    avatar: storageLocal().getItem<DataInfo<number>>(userKey)?.avatar ?? "",
+    avatar: normalizeAvatarUrl(
+      storageLocal().getItem<DataInfo<number>>(userKey)?.avatar ?? ""
+    ),
     // 用户名
     username: storageLocal().getItem<DataInfo<number>>(userKey)?.username ?? "",
     // 昵称
@@ -77,7 +51,7 @@ export const useUserStore = defineStore("pure-user", {
   actions: {
     /** 存储头像 */
     SET_AVATAR(avatar: string) {
-      this.avatar = avatar;
+      this.avatar = normalizeAvatarUrl(avatar);
     },
     /** 存储用户名 */
     SET_USERNAME(username: string) {

@@ -360,19 +360,18 @@ export const clearErrorLogs = () => {
 
 export type MeterReadingRecord = {
   id: number;
-  collectorNo: string;
-  meterAddress: string;
-  deviceNo: string;
-  userRemark: string;
-  functionType: string;
-  resultValue: number;
-  finishedTime: string;
-  durationMs: number;
-  sendCount: number;
-  meterType: string;
+  meterId: number;
+  meterType?: string;
+  readingTime?: string;
+  readingValue?: number;
+  readingType?: string;
+  collectorId?: number;
+  operatorId?: number;
+  remark?: string;
+  createdAt?: string;
 };
 
-/** 获取系统监控-抄表数据列表（eladmin GET /api/meter-readings/records） */
+/** 获取系统监控-抄表数据列表（eladmin GET /api/meter-readings） */
 export const getMeterReadingRecords = async (
   data?: ListQuery
 ): Promise<ResultTable> => {
@@ -384,16 +383,15 @@ export const getMeterReadingRecords = async (
     meterType: "electric"
   };
 
-  if (data?.blurry) params.blurry = data.blurry;
-  if (data?.collectorNo) params.collectorNo = data.collectorNo;
-  if (data?.meterNo) params.meterNo = data.meterNo;
+  if (data?.meterId) params.meterId = Number(data.meterId);
+  if (data?.readingType) params.readingType = data.readingType;
   if (Array.isArray(data?.readingTime) && data.readingTime.length === 2) {
     params.readingTime = data.readingTime;
   }
 
   const res = await http.request<EladminPageResult<MeterReadingRecord>>(
     "get",
-    "/api/meter-readings/records",
+    "/api/meter-readings",
     { params }
   );
   const list = res?.content ?? [];

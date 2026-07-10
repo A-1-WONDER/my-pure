@@ -37,15 +37,26 @@ const {
       :model="form"
       class="search-form bg-bg_color w-full pl-8 pt-[12px] overflow-auto"
     >
-      <el-form-item label="模糊搜索" prop="blurry">
+      <el-form-item label="表具ID" prop="meterId">
         <el-input
-          v-model="form.blurry"
-          placeholder="采集器编号/通讯地址/用户"
+          v-model="form.meterId"
+          placeholder="请输入表具ID"
           clearable
           class="w-[220px]!"
         />
       </el-form-item>
-      <el-form-item label="完成时间" prop="readingTime">
+      <el-form-item label="读数类型" prop="readingType">
+        <el-select
+          v-model="form.readingType"
+          placeholder="全部"
+          clearable
+          class="w-[170px]!"
+        >
+          <el-option label="自动抄表" value="auto" />
+          <el-option label="手动录入" value="manual" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="读数时间" prop="readingTime">
         <el-date-picker
           v-model="form.readingTime"
           :shortcuts="getPickerShortcuts()"
@@ -92,7 +103,10 @@ const {
           @page-current-change="handleCurrentChange"
         >
           <template #operation="{ row }">
-            <el-popconfirm title="确定删除该抄表记录吗？" @confirm="handleDelete(row)">
+            <el-popconfirm
+              title="确定删除该抄表记录吗？"
+              @confirm="handleDelete(row)"
+            >
               <template #reference>
                 <el-button
                   class="reset-margin"

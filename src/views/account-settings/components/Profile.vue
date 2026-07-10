@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { formUpload } from "@/api/mock";
 import { message } from "@/utils/message";
 import { onMounted, reactive, ref } from "vue";
 import { type UserInfo, getMine, updateMine } from "@/api/user";
+import { uploadUserAvatar } from "@/api/system";
+import { getToken, setToken } from "@/utils/auth";
+import { normalizeAvatarUrl } from "@/api/eladmin-system-adapter";
+import { useUserStoreHook } from "@/store/modules/user";
 import type { FormInstance, FormRules } from "element-plus";
 import ReCropperPreview from "@/components/ReCropperPreview";
-import { createFormData, deviceDetection } from "@pureadmin/utils";
+import { deviceDetection } from "@pureadmin/utils";
 import uploadLine from "~icons/ri/upload-line";
 
 defineOptions({
@@ -13,22 +16,45 @@ defineOptions({
 });
 
 const imgSrc = ref("");
-const cropperBlob = ref();
+const cropperBlob = ref<Blob>();
 const cropRef = ref();
 const uploadRef = ref();
 const isShow = ref(false);
+const saving = ref(false);
 const userInfoFormRef = ref<FormInstance>();
 
 const userInfos = reactive({
+  id: undefined as number | undefined,
   avatar: "",
+  username: "",
   nickname: "",
   email: "",
   phone: "",
-  description: ""
+  gender: "男"
 });
 
-const rules = reactive<FormRules<UserInfo>>({
-  nickname: [{ required: true, message: "昵称必填", trigger: "blur" }]
+const phonePattern = /^1[3-9]\d{9}$/;
+
+const rules = reactive<FormRules>({
+  nickname: [{ required: true, message: "昵称必填", trigger: "blur" }],
+  phone: [
+    { required: true, message: "手机号必填", trigger: "blur" },
+    {
+      validator: (_rule, value, callback) => {
+        const phone = String(value ?? "").trim();
+        if (!phone) {
+          callback(new Error("手机号必填"));
+          return;
+        }
+        if (!phonePattern.test(phone)) {
+          callback(new Error("请输入正确的手机号码"));
+          return;
+        }
+        callback();
+      },
+      trigger: "blur"
+    }
+  ]
 });
 
 function queryEmail(queryString, callback) {
@@ -38,10 +64,9 @@ function queryEmail(queryString, callback) {
     { value: "@163.com" }
   ];
   let results = [];
-  let queryList = [];
-  emailList.map(item =>
-    queryList.push({ value: queryString.split("@")[0] + item.value })
-  );
+  const queryList = emailList.map(item => ({
+    value: queryString.split("@")[0] + item.value
+  }));
   results = queryString
     ? queryList.filter(
         item =>
@@ -68,25 +93,51 @@ const handleClose = () => {
 
 const onCropper = ({ blob }) => (cropperBlob.value = blob);
 
-const handleSubmitImage = () => {
-  const formData = createFormData({
-    files: new File([cropperBlob.value], "avatar")
+function syncProfileCache(profile: Partial<UserInfo>) {
+  const token = getToken();
+  if (!token?.accessToken) return;
+  setToken({
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    expires: new Date(token.expires),
+    username: profile.username || token.username || userInfos.username,
+    nickname: profile.nickname || token.nickname || userInfos.nickname,
+    avatar: profile.avatar || token.avatar || userInfos.avatar,
+    roles: token.roles,
+    permissions: token.permissions
   });
-  formUpload(formData)
-    .then(({ code }) => {
-      if (code === 0) {
-        message("更新头像成功", { type: "success" });
-        handleClose();
-      } else {
-        message("更新头像失败");
-      }
-    })
-    .catch(error => {
-      message(`提交异常 ${error}`, { type: "error" });
+  if (profile.nickname) {
+    useUserStoreHook().SET_NICKNAME(profile.nickname);
+  }
+  if (profile.avatar) {
+    useUserStoreHook().SET_AVATAR(profile.avatar);
+  }
+}
+
+const handleSubmitImage = async () => {
+  if (!cropperBlob.value) {
+    message("请先裁剪头像", { type: "warning" });
+    return;
+  }
+  try {
+    const res = await uploadUserAvatar(cropperBlob.value, "avatar.png");
+    const avatarName = String(res?.avatar ?? "");
+    const avatarUrl = normalizeAvatarUrl(avatarName);
+    if (!avatarUrl) {
+      message("头像上传成功，但地址解析失败", { type: "warning" });
+      return;
+    }
+    userInfos.avatar = avatarUrl;
+    syncProfileCache({ avatar: avatarUrl, nickname: userInfos.nickname });
+    message("更新头像成功", { type: "success" });
+    handleClose();
+  } catch (error: unknown) {
+    message(error instanceof Error ? error.message : "更新头像失败", {
+      type: "error"
     });
+  }
 };
 
-// 更新信息（需后端实现 PUT /mine；本地 mock 见 mock/mine.ts）
 const onSubmit = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
   try {
@@ -94,10 +145,14 @@ const onSubmit = async (formEl: FormInstance | undefined) => {
   } catch {
     return;
   }
+  saving.value = true;
   try {
     const { code, data, message: msg } = await updateMine(userInfos);
     if (code === 0) {
-      if (data) Object.assign(userInfos, data);
+      if (data) {
+        Object.assign(userInfos, data);
+        syncProfileCache(data);
+      }
       message("更新信息成功", { type: "success" });
     } else {
       message(String(msg || "更新失败"), { type: "error" });
@@ -108,13 +163,20 @@ const onSubmit = async (formEl: FormInstance | undefined) => {
       error instanceof Error ? error.message : "更新失败，请检查网络或接口",
       { type: "error" }
     );
+  } finally {
+    saving.value = false;
   }
 };
 
 onMounted(async () => {
-  const { code, data } = await getMine();
-  if (code === 0) {
-    Object.assign(userInfos, data);
+  try {
+    const { code, data } = await getMine();
+    if (code === 0 && data) {
+      Object.assign(userInfos, data);
+    }
+  } catch (error) {
+    console.error("加载个人信息失败:", error);
+    message("加载个人信息失败", { type: "error" });
   }
 });
 </script>
@@ -150,37 +212,42 @@ onMounted(async () => {
           </el-button>
         </el-upload>
       </el-form-item>
+      <el-form-item label="用户名">
+        <el-input v-model="userInfos.username" disabled />
+      </el-form-item>
       <el-form-item label="昵称" prop="nickname">
         <el-input v-model="userInfos.nickname" placeholder="请输入昵称" />
       </el-form-item>
-      <el-form-item label="邮箱" prop="email">
+      <el-form-item label="邮箱">
         <el-autocomplete
           v-model="userInfos.email"
           :fetch-suggestions="queryEmail"
           :trigger-on-focus="false"
-          placeholder="请输入邮箱"
+          placeholder="邮箱由系统维护"
           clearable
+          disabled
           class="w-full"
         />
+        <p class="mt-2 text-xs text-[var(--el-text-color-secondary)]">
+          邮箱修改暂未开放，如需变更请联系管理员。
+        </p>
       </el-form-item>
-      <el-form-item label="联系电话">
+      <el-form-item label="手机号" prop="phone">
         <el-input
           v-model="userInfos.phone"
-          placeholder="请输入联系电话"
+          placeholder="请输入手机号"
           clearable
+          maxlength="11"
         />
+        <p class="mt-2 text-xs text-[var(--el-text-color-secondary)]">
+          手机号作为账户联系方式在此维护（原「密保手机」入口已合并至此）。
+        </p>
       </el-form-item>
-      <el-form-item label="简介">
-        <el-input
-          v-model="userInfos.description"
-          placeholder="请输入简介"
-          type="textarea"
-          :autosize="{ minRows: 6, maxRows: 8 }"
-          maxlength="56"
-          show-word-limit
-        />
-      </el-form-item>
-      <el-button type="primary" @click="onSubmit(userInfoFormRef)">
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="onSubmit(userInfoFormRef)"
+      >
         更新信息
       </el-button>
     </el-form>

@@ -58,18 +58,18 @@ const systemManagementRouter = {
 const systemMonitorRouter = {
   path: "/monitor",
   meta: {
-    icon: "ep:monitor",
+    icon: "ri:pulse-line",
     title: "menus.pureSysMonitor",
     rank: monitor
   },
   children: [
     {
-      path: "/monitor/online-user",
-      component: "monitor/online/index",
-      name: "OnlineUser",
+      path: "/monitor/operation-logs",
+      component: "monitor/logs/operation/index",
+      name: "OperationLog",
       meta: {
-        icon: "ri:user-voice-line",
-        title: "menus.pureOnlineUser",
+        icon: "ri:file-list-3-line",
+        title: "menus.pureOperationLog",
         roles: ["admin"]
       }
     },
@@ -78,28 +78,28 @@ const systemMonitorRouter = {
       component: "monitor/logs/login/index",
       name: "LoginLog",
       meta: {
-        icon: "ri:window-line",
+        icon: "ri:login-box-line",
         title: "menus.pureLoginLog",
-        roles: ["admin"]
-      }
-    },
-    {
-      path: "/monitor/operation-logs",
-      component: "monitor/logs/operation/index",
-      name: "OperationLog",
-      meta: {
-        icon: "ri:history-fill",
-        title: "menus.pureOperationLog",
         roles: ["admin"]
       }
     },
     {
       path: "/monitor/system-logs",
       component: "monitor/logs/system/index",
-      name: "SystemLog",
+      name: "ErrorLog",
       meta: {
-        icon: "ri:file-search-line",
-        title: "menus.pureSystemLog",
+        icon: "ri:bug-line",
+        title: "menus.pureErrorLog",
+        roles: ["admin"]
+      }
+    },
+    {
+      path: "/monitor/meter-reading-data",
+      component: "monitor/meter-reading/index",
+      name: "MeterReadingData",
+      meta: {
+        icon: "ri:file-chart-line",
+        title: "menus.pureMeterReadingData",
         roles: ["admin"]
       }
     }
@@ -120,37 +120,17 @@ const systemMonitor2Router = {
       name: "Monitor2Collector",
       meta: {
         icon: "ri:server-line",
-        title: "menus.pureCollector",
+        title: "采集器管理",
         roles: ["admin"]
       }
     },
     {
-      path: "/monitor2/water-meter",
-      component: "monitor2/water-meter/index",
-      name: "Monitor2WaterMeter",
+      path: "/monitor2/electric-meter",
+      component: "monitor2/meter-dynamic/index",
+      name: "Monitor2ElectricMeter",
       meta: {
-        icon: "ri:water-flash-line",
-        title: "menus.pureWaterMeter",
-        roles: ["admin"]
-      }
-    },
-    {
-      path: "/monitor2/meter-add",
-      component: "monitor2/meter-add/index",
-      name: "Monitor2MeterAdd",
-      meta: {
-        icon: "ri:add-circle-line",
-        title: "menus.pureMeterAdd",
-        roles: ["admin"]
-      }
-    },
-    {
-      path: "/monitor2/system-logs",
-      component: "monitor2/logs/system/index",
-      name: "SystemLog2",
-      meta: {
-        icon: "ri:file-search-line",
-        title: "menus.pureSystemLog2",
+        icon: "ri:flashlight-line",
+        title: "电表管理",
         roles: ["admin"]
       }
     }

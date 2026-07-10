@@ -41,8 +41,7 @@ export default {
         title: $t("menus.pureAlarmSystemSetting"),
         icon: "ep:setting",
         keepAlive: true,
-        /** 暂时不在侧栏展示，恢复时删掉此项或改为 true */
-        showLink: false
+        showLink: true
       }
     },
     {

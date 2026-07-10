@@ -2,7 +2,8 @@
 import { useI18n } from "vue-i18n";
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { storeToRefs } from "pinia";
-import { cloneDeep } from "@pureadmin/utils";
+import { cloneDeep, storageLocal } from "@pureadmin/utils";
+import { responsiveStorageNameSpace } from "@/config";
 import { noticesData } from "./data";
 import NoticeList from "./components/NoticeList.vue";
 import BellIcon from "~icons/lucide/bell";
@@ -11,6 +12,8 @@ import {
   startAlarmNoticePolling,
   stopAlarmNoticePolling
 } from "@/utils/alarmNoticePoll";
+import { fetchSiteMessages, fetchSiteTodos } from "@/utils/siteNoticeLoad";
+import type { ListItem } from "./data";
 import { message } from "@/utils/message";
 
 const { t } = useI18n();
@@ -19,9 +22,64 @@ const alarmNoticeStore = useAlarmNoticeStore();
 const { items: alarmNoticeItems, alarmUnreadCount } =
   storeToRefs(alarmNoticeStore);
 
+const messageItems = ref<ListItem[]>([]);
+const todoItems = ref<ListItem[]>([]);
+let siteNoticeTimer: ReturnType<typeof setInterval> | null = null;
+
+const storageKeySeenTodoKeys = () =>
+  `${responsiveStorageNameSpace()}site-notice-seen-todo-keys`;
+
+function loadSeenTodoKeys(): Set<string> {
+  const arr = storageLocal().getItem<string[]>(storageKeySeenTodoKeys());
+  return new Set(Array.isArray(arr) ? arr.map(String) : []);
+}
+
+function saveSeenTodoKeys(set: Set<string>) {
+  storageLocal().setItem(storageKeySeenTodoKeys(), [...set].slice(-200));
+}
+
+const seenTodoKeys = ref(loadSeenTodoKeys());
+
+function getTodoDedupeKey(item: ListItem): string {
+  if (item.alarmEventId) return String(item.alarmEventId);
+  return `todo:${item.title}|${item.datetime}`;
+}
+
+async function refreshSiteNotices() {
+  try {
+    const [messages, todos] = await Promise.all([
+      fetchSiteMessages(),
+      fetchSiteTodos()
+    ]);
+    messageItems.value = messages;
+    todoItems.value = todos;
+  } catch {
+    /* 未登录或接口不可用时静默失败 */
+  }
+}
+
+const todoUnreadCount = computed(
+  () =>
+    todoItems.value.filter(
+      item => !seenTodoKeys.value.has(getTodoDedupeKey(item))
+    ).length
+);
+
+const bellBadgeCount = computed(
+  () => alarmUnreadCount.value + todoUnreadCount.value
+);
+
+function markTodosSeen() {
+  const next = new Set(seenTodoKeys.value);
+  todoItems.value.forEach(item => next.add(getTodoDedupeKey(item)));
+  seenTodoKeys.value = next;
+  saveSeenTodoKeys(next);
+}
+
 function onNoticeDropdownVisible(visible: boolean) {
   if (visible) {
     alarmNoticeStore.markAlarmNoticesRead();
+    markTodosSeen();
   }
 }
 
@@ -31,12 +89,20 @@ function handleClearAlarmNotices() {
   message("已清空通知", { type: "success" });
 }
 
-/** 合并框架默认通知数据与报警站内通知（报警在「通知」页签最前） */
+/** 合并后端数据：通知（报警推送）、消息（操作日志）、待办（未处理报警） */
 const notices = computed(() => {
   const tabs = cloneDeep(noticesData);
   const notifyTab = tabs.find(item => item.key === "1");
   if (notifyTab) {
     notifyTab.list = [...alarmNoticeItems.value, ...(notifyTab.list ?? [])];
+  }
+  const messageTab = tabs.find(item => item.key === "2");
+  if (messageTab) {
+    messageTab.list = messageItems.value;
+  }
+  const todoTab = tabs.find(item => item.key === "3");
+  if (todoTab) {
+    todoTab.list = todoItems.value;
   }
   return tabs;
 });
@@ -50,11 +116,17 @@ const getLabel = computed(
 
 onMounted(() => {
   alarmNoticeStore.hydrateFromStorage();
+  void refreshSiteNotices();
   startAlarmNoticePolling(45000);
+  siteNoticeTimer = setInterval(() => void refreshSiteNotices(), 45000);
 });
 
 onBeforeUnmount(() => {
   stopAlarmNoticePolling();
+  if (siteNoticeTimer != null) {
+    clearInterval(siteNoticeTimer);
+    siteNoticeTimer = null;
+  }
 });
 </script>
 
@@ -68,9 +140,9 @@ onBeforeUnmount(() => {
       :class="['dropdown-badge', 'navbar-bg-hover', 'select-none', 'mr-[7px]']"
     >
       <el-badge
-        :value="alarmUnreadCount"
+        :value="bellBadgeCount"
         :max="99"
-        :hidden="alarmUnreadCount === 0"
+        :hidden="bellBadgeCount === 0"
       >
         <span class="header-notice-icon">
           <IconifyIconOffline :icon="BellIcon" />

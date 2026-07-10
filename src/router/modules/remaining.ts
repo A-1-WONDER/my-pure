@@ -92,5 +92,26 @@ export default [
       showLink: false,
       rank: 9999
     }
+  },
+  // 废弃菜单路径重定向（与静态路由 monitor2 / monitor 保持一致）
+  {
+    path: "/monitor2/water-meter",
+    redirect: "/monitor2/electric-meter",
+    meta: { showLink: false }
+  },
+  {
+    path: "/monitor2/meter-add",
+    redirect: "/monitor2/electric-meter",
+    meta: { showLink: false }
+  },
+  {
+    path: "/monitor2/system-logs",
+    redirect: "/monitor/operation-logs",
+    meta: { showLink: false }
+  },
+  {
+    path: "/monitor/online-user",
+    redirect: "/monitor/operation-logs",
+    meta: { showLink: false }
   }
 ] satisfies Array<RouteConfigsTable>;

@@ -102,7 +102,13 @@ async function fetchFreshSummary(
     )) as Record<string, unknown>;
     const payload = unwrapEnergyStatisticsSummaryResponse(response);
     if (!payload) {
-      throw new Error("未获取到用电量汇总数据");
+      throw new Error(
+        getEnergyStatisticsSummaryErrorMessage(response) ||
+          "未获取到用电量汇总数据"
+      );
+    }
+    if (Number(payload.status) !== 1) {
+      throw new Error(payload.msg || "未获取到用电量汇总数据");
     }
     setEnergySummaryCache(params, payload);
     return transformStatsData(payload);

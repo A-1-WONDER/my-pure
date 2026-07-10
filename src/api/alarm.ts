@@ -113,3 +113,33 @@ export const getAlarmEventQueryList = (data?: object) => {
 export const clearAllAlarmEvents = (data?: object) => {
   return http.request<Result>("post", "/api/alarm-event-clear-all", { data });
 };
+
+/** 批量删除报警事件 */
+export const batchDeleteAlarmEvents = (ids: number[]) => {
+  return http.request<Result>("post", "/api/alarm-event-batch-delete", {
+    data: { ids }
+  });
+};
+
+export interface AlarmSystemSetting {
+  electricAlarmEnabled: boolean;
+  powerOffAlarm: boolean;
+  longOfflineAlarm: boolean;
+}
+
+/** 查询系统报警设置 */
+export const getAlarmSystemSetting = () => {
+  return http.request<Result<AlarmSystemSetting>>(
+    "post",
+    "/api/alarm-system-setting-get"
+  );
+};
+
+/** 保存系统报警设置 */
+export const saveAlarmSystemSetting = (data: AlarmSystemSetting) => {
+  return http.request<Result<AlarmSystemSetting>>(
+    "post",
+    "/api/alarm-system-setting-save",
+    { data }
+  );
+};

@@ -1,39 +1,82 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { message } from "@/utils/message";
+import { getMine } from "@/api/user";
 import { deviceDetection } from "@pureadmin/utils";
 
 defineOptions({
   name: "AccountManagement"
 });
 
-const list = ref([
+const profile = ref({
+  phone: "",
+  email: ""
+});
+
+const maskedPhone = computed(() => {
+  const phone = profile.value.phone?.trim();
+  if (!phone) return "未绑定手机号";
+  if (phone.length < 7) return phone;
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+});
+
+const maskedEmail = computed(() => {
+  const email = profile.value.email?.trim();
+  if (!email) return "未绑定邮箱";
+  const [name, domain] = email.split("@");
+  if (!domain) return email;
+  const head = name.length <= 2 ? name[0] : name.slice(0, 2);
+  return `${head}***@${domain}`;
+});
+
+const list = computed(() => [
   {
     title: "账户密码",
-    illustrate: "当前密码强度：强",
-    button: "修改"
+    illustrate: "在线修改密码功能暂未开放",
+    button: "暂未开放",
+    disabled: true
   },
   {
-    title: "密保手机",
-    illustrate: "已经绑定手机：158****6789",
-    button: "修改"
+    title: "绑定手机",
+    illustrate: `当前手机号：${maskedPhone.value}（请在「个人信息」中修改）`,
+    button: "去修改",
+    action: "profile"
   },
   {
     title: "密保问题",
-    illustrate: "未设置密保问题，密保问题可有效保护账户安全",
-    button: "修改"
+    illustrate: "暂未开通，后续可按需接入",
+    button: "暂未开放",
+    disabled: true
   },
   {
     title: "备用邮箱",
-    illustrate: "已绑定邮箱：pure***@163.com",
-    button: "修改"
+    illustrate: `当前邮箱：${maskedEmail.value}`,
+    button: "暂未开放",
+    disabled: true
   }
 ]);
 
-function onClick(item) {
-  console.log("onClick", item.title);
-  message("请根据具体业务自行实现", { type: "success" });
+function onClick(item: { title: string; disabled?: boolean; action?: string }) {
+  if (item.disabled) {
+    message(`${item.title}暂未开放`, { type: "info" });
+    return;
+  }
+  if (item.action === "profile") {
+    message("请在左侧切换到「个人信息」修改手机号", { type: "success" });
+  }
 }
+
+onMounted(async () => {
+  try {
+    const { code, data } = await getMine();
+    if (code === 0 && data) {
+      profile.value.phone = data.phone;
+      profile.value.email = data.email;
+    }
+  } catch {
+    // ignore
+  }
+});
 </script>
 
 <template>
@@ -50,7 +93,12 @@ function onClick(item) {
           <p>{{ item.title }}</p>
           <el-text class="mx-1" type="info">{{ item.illustrate }}</el-text>
         </div>
-        <el-button type="primary" text @click="onClick(item)">
+        <el-button
+          type="primary"
+          text
+          :disabled="item.disabled"
+          @click="onClick(item)"
+        >
           {{ item.button }}
         </el-button>
       </div>

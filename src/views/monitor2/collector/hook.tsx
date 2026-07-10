@@ -7,7 +7,11 @@ import { addDialog } from "@/components/ReDialog";
 import type { PaginationProps } from "@pureadmin/table";
 import { type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import { getKeyList } from "@pureadmin/utils";
-import { getCollectorList } from "@/api/collector";
+import {
+  getCollectorList,
+  editCollector,
+  deleteCollectors
+} from "@/api/collector";
 import type { CollectorInfo } from "@/api/types";
 import { utils, writeFile } from "xlsx";
 
@@ -202,20 +206,71 @@ export function useCollector(tableRef: Ref) {
     tableRef.value.getTableRef().clearSelection();
   }
 
-  function onbatchDel() {
-    const curSelected = tableRef.value.getTableRef().getSelectionRows();
-    message(`已删除序号为 ${getKeyList(curSelected, "id")} 的数据`, {
-      type: "success"
-    });
-    tableRef.value.getTableRef().clearSelection();
-    onSearch();
+  function buildCollectorPayload(
+    row: Record<string, any>,
+    saveData: Record<string, any>
+  ) {
+    return {
+      id: row.id,
+      collectorNo: saveData.code ?? row.code ?? row.collectorNo,
+      collectorName: saveData.name ?? row.name ?? row.collectorName,
+      installAddress: saveData.location ?? row.location ?? row.installAddress,
+      status: saveData.status ?? row.status,
+      remark: saveData.remark ?? row.remark,
+      ipAddress: row.ipAddress,
+      port: row.port,
+      protocol: row.protocol,
+      enabled: row.enabled,
+      model: row.model
+    };
   }
 
-  function clearAll() {
-    message("已删除所有采集器数据", {
-      type: "success"
-    });
-    onSearch();
+  async function onbatchDel() {
+    const curSelected = tableRef.value.getTableRef().getSelectionRows();
+    const ids = getKeyList(curSelected, "id")
+      .map(id => Number(id))
+      .filter(id => Number.isFinite(id));
+    if (!ids.length) {
+      message("请先选择要删除的采集器", { type: "warning" });
+      return;
+    }
+    try {
+      await deleteCollectors(ids);
+      message(`已删除 ${ids.length} 条采集器数据`, { type: "success" });
+      tableRef.value.getTableRef().clearSelection();
+      selectedNum.value = 0;
+      onSearch();
+    } catch {
+      message("删除失败", { type: "error" });
+    }
+  }
+
+  async function clearAll() {
+    try {
+      const allIds: number[] = [];
+      let page = 1;
+      let total = 0;
+      const params: Record<string, unknown> = { size: 200 };
+      if (form.name) params.collectorName = form.name;
+      if (form.code) params.collectorNo = form.code;
+      do {
+        const result = await getCollectorList({ ...params, page });
+        const items = result?.content ?? [];
+        allIds.push(...items.map((item: { id: number }) => item.id));
+        total = result?.totalElements ?? 0;
+        page += 1;
+      } while (allIds.length < total && page <= 50);
+      if (!allIds.length) {
+        message("暂无采集器数据", { type: "info" });
+        return;
+      }
+      await deleteCollectors(allIds);
+      message(`已删除全部 ${allIds.length} 条采集器数据`, { type: "success" });
+      selectedNum.value = 0;
+      onSearch();
+    } catch {
+      message("清空失败", { type: "error" });
+    }
   }
 
   function onEdit(row) {
@@ -229,51 +284,14 @@ export function useCollector(tableRef: Ref) {
       contentRenderer: () => EditForm,
       props: {
         data: row,
-        onSave: saveData => {
-          console.log("onSave回调被调用，接收到的数据:", saveData);
-          console.log("saveData.remark:", saveData?.remark);
-          console.log("当前行的id:", row.id);
-          console.log("当前dataList:", dataList.value);
-
-          // 更新本地数据
-          const index = dataList.value.findIndex(item => {
-            // 处理数字和字符串类型的id比较
-            return String(item.id) === String(row.id);
-          });
-          console.log("找到的索引:", index);
-
-          if (index !== -1) {
-            console.log("更新前的数据备注:", dataList.value[index].remark);
-            console.log("要更新的数据备注:", saveData.remark);
-
-            // 保留原始数据的id，更新其他字段
-            dataList.value[index] = {
-              ...dataList.value[index],
-              ...saveData
-            };
-
-            console.log("更新后的数据备注:", dataList.value[index].remark);
-
-            // 确保id字段不被覆盖（保持原始id）
-            dataList.value[index].id = row.id;
-
-            // 触发响应式更新
-            dataList.value = [...dataList.value];
-            console.log(
-              "更新后的dataList备注字段:",
-              dataList.value.map(item => ({ id: item.id, remark: item.remark }))
-            );
-          } else {
-            console.error("未找到对应的数据项，id:", row.id);
-            console.error(
-              "dataList中的id列表:",
-              dataList.value.map(item => ({
-                id: item.id,
-                type: typeof item.id
-              }))
-            );
+        onSave: async saveData => {
+          try {
+            await editCollector(buildCollectorPayload(row, saveData));
+            message("采集器信息保存成功", { type: "success" });
+            onSearch();
+          } catch {
+            message("保存失败", { type: "error" });
           }
-          message("采集器信息保存成功", { type: "success" });
         }
       },
       closeCallBack: () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import dayjs from "dayjs";
 import { getMineLogs } from "@/api/user";
+import { message } from "@/utils/message";
 import { reactive, ref, onMounted } from "vue";
 import { deviceDetection } from "@pureadmin/utils";
 import type { PaginationProps } from "@pureadmin/table";
@@ -35,11 +36,6 @@ const columns: TableColumnList = [
     minWidth: 140
   },
   {
-    label: "操作系统",
-    prop: "system",
-    minWidth: 100
-  },
-  {
     label: "浏览器类型",
     prop: "browser",
     minWidth: 100
@@ -49,23 +45,33 @@ const columns: TableColumnList = [
     prop: "operatingTime",
     minWidth: 180,
     formatter: ({ operatingTime }) =>
-      dayjs(operatingTime).format("YYYY-MM-DD HH:mm:ss")
+      operatingTime ? dayjs(operatingTime).format("YYYY-MM-DD HH:mm:ss") : "-"
   }
 ];
 
 async function onSearch() {
   loading.value = true;
-  const { code, data } = await getMineLogs();
-  if (code === 0) {
-    dataList.value = data.list;
-    pagination.total = data.total;
-    pagination.pageSize = data.pageSize;
-    pagination.currentPage = data.currentPage;
-  }
-
-  setTimeout(() => {
+  try {
+    const { code, data } = await getMineLogs({
+      page: pagination.currentPage,
+      pageSize: pagination.pageSize
+    });
+    if (code === 0 && data) {
+      dataList.value = data.list;
+      pagination.total = data.total;
+      pagination.pageSize = data.pageSize;
+      pagination.currentPage = data.currentPage;
+    }
+  } catch {
+    message("加载安全日志失败", { type: "error" });
+  } finally {
     loading.value = false;
-  }, 200);
+  }
+}
+
+function handleCurrentChange(page: number) {
+  pagination.currentPage = page;
+  onSearch();
 }
 
 onMounted(() => {
@@ -88,6 +94,7 @@ onMounted(() => {
       :data="dataList"
       :columns="columns"
       :pagination="pagination"
+      @page-current-change="handleCurrentChange"
     />
   </div>
 </template>
