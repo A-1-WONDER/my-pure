@@ -11,6 +11,8 @@ import {
   mapEladminOperationLog,
   mapEladminRole,
   mapEladminUser,
+  buildEladminDeptPayloadFromForm,
+  buildEladminMenuPayloadFromForm,
   okResult,
   okTable,
   type EladminPageResult
@@ -231,6 +233,10 @@ let rolePermissionTreeCache: {
   menuIndex: ReturnType<typeof buildRolePermissionTree>["menuIndex"];
 } | null = null;
 
+export function clearRolePermissionTreeCache() {
+  rolePermissionTreeCache = null;
+}
+
 async function loadRolePermissionTreeContext() {
   if (rolePermissionTreeCache) return rolePermissionTreeCache;
 
@@ -264,6 +270,25 @@ export const getMenuList = async (): Promise<Result> => {
   return okResult(list);
 };
 
+/** 新增菜单（eladmin POST /api/menus） */
+export const createMenu = (form: Record<string, unknown>) => {
+  return http.request<void>("post", "/api/menus", {
+    data: buildEladminMenuPayloadFromForm(form as any)
+  });
+};
+
+/** 修改菜单（eladmin PUT /api/menus） */
+export const updateMenu = (form: Record<string, unknown>) => {
+  return http.request<void>("put", "/api/menus", {
+    data: buildEladminMenuPayloadFromForm(form as any)
+  });
+};
+
+/** 删除菜单（eladmin DELETE /api/menus，body 为 id 数组） */
+export const deleteMenus = (ids: number[]) => {
+  return http.request<void>("delete", "/api/menus", { data: ids });
+};
+
 /** 获取系统管理-部门管理列表（eladmin GET /api/dept） */
 export const getDeptList = async (): Promise<Result> => {
   const res = await http.request<EladminPageResult<Record<string, unknown>>>(
@@ -272,6 +297,25 @@ export const getDeptList = async (): Promise<Result> => {
   );
   const list = (res?.content ?? []).map(mapEladminDept);
   return okResult(list);
+};
+
+/** 新增部门（eladmin POST /api/dept） */
+export const createDept = (form: Record<string, unknown>) => {
+  return http.request<void>("post", "/api/dept", {
+    data: buildEladminDeptPayloadFromForm(form as any)
+  });
+};
+
+/** 修改部门（eladmin PUT /api/dept） */
+export const updateDept = (form: Record<string, unknown>) => {
+  return http.request<void>("put", "/api/dept", {
+    data: buildEladminDeptPayloadFromForm(form as any)
+  });
+};
+
+/** 删除部门（eladmin DELETE /api/dept，body 为 id 数组） */
+export const deleteDepts = (ids: number[]) => {
+  return http.request<void>("delete", "/api/dept", { data: ids });
 };
 
 /** 获取系统监控-在线用户列表 */

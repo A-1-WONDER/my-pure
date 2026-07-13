@@ -8,7 +8,7 @@ import {
   type StatsDisplayData
 } from "@/api/business-stats";
 
-const SESSION_PREFIX = "energy-summary:v1:";
+const SESSION_PREFIX = "energy-summary:v2:";
 const TTL_MS: Record<StatsDimension, number> = {
   hour: 5 * 60 * 1000,
   day: 10 * 60 * 1000,

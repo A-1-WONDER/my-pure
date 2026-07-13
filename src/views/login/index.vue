@@ -192,6 +192,10 @@ import User from "~icons/ri/user-3-fill";
 import Keyhole from "~icons/ri/shield-keyhole-line";
 import Refresh from "~icons/ep/refresh";
 
+const devLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
+
 const { t } = useI18n();
 const router = useRouter();
 const loading = ref(false);
@@ -226,9 +230,9 @@ const captchaPlaceholder = computed(() => getCaptchaPlaceholder());
 const getBackendVerifyCode = async () => {
   verifyCodeLoading.value = true;
   try {
-    console.log("正在获取验证码...");
+    devLog("正在获取验证码...");
     const res = await getAuthCode();
-    console.log("验证码接口响应:", res);
+    devLog("验证码接口响应:", res);
 
     if (res.img && res.uuid) {
       verifyCodeImg.value = res.img;
@@ -236,9 +240,9 @@ const getBackendVerifyCode = async () => {
       // 后端返回格式: codeKey_1234567890abcdef
       verifyUuid.value = res.uuid;
       ruleForm.verifyCode = ""; // 清空用户输入的验证码
-      console.log("验证码图片base64长度:", res.img?.length);
-      console.log("验证码UUID:", res.uuid);
-      console.log(
+      devLog("验证码图片base64长度:", res.img?.length);
+      devLog("验证码UUID:", res.uuid);
+      devLog(
         "UUID格式:",
         res.uuid.startsWith("codeKey_") ? "后端标准格式" : "其他格式"
       );
@@ -258,9 +262,9 @@ const getBackendVerifyCode = async () => {
 const getRsaPublicKeyFromServer = async () => {
   rsaLoading.value = true;
   try {
-    console.log("正在获取RSA公钥...");
+    devLog("正在获取RSA公钥...");
     const res = await getRsaPublicKey();
-    console.log("RSA公钥获取成功:", res.publicKey?.substring(0, 50) + "...");
+    devLog("RSA公钥获取成功:", res.publicKey?.substring(0, 50) + "...");
 
     // 设置RSA公钥 - 使用简化版本
     const success = rsaSimple.setPublicKey(res.publicKey);
@@ -280,7 +284,7 @@ const getRsaPublicKeyFromServer = async () => {
     // 尝试从localStorage获取缓存的公钥
     const cachedKey = localStorage.getItem("rsaPublicKey");
     if (cachedKey) {
-      console.log("使用缓存的RSA公钥");
+      devLog("使用缓存的RSA公钥");
       const success = rsaSimple.setPublicKey(cachedKey);
       rsaInitialized.value = success;
     }
@@ -298,19 +302,19 @@ onMounted(() => {
   if (import.meta.env.DEV) {
     // @ts-ignore
     window.testLogin = () => {
-      console.log("=== 测试登录 ===");
-      console.log("用户名:", ruleForm.username);
-      console.log("密码:", ruleForm.password);
-      console.log("验证码:", ruleForm.verifyCode);
-      console.log("UUID:", verifyUuid.value);
-      console.log("RSA初始化:", rsaInitialized.value);
+      devLog("=== 测试登录 ===");
+      devLog("用户名:", ruleForm.username);
+      devLog("密码:", ruleForm.password);
+      devLog("验证码:", ruleForm.verifyCode);
+      devLog("UUID:", verifyUuid.value);
+      devLog("RSA初始化:", rsaInitialized.value);
 
       // 测试RSA加密
       if (rsaInitialized.value) {
         try {
           const encrypted = rsaSimple.encryptPassword(ruleForm.password);
-          console.log("RSA加密结果:", encrypted.substring(0, 50) + "...");
-          console.log("加密长度:", encrypted.length);
+          devLog("RSA加密结果:", encrypted.substring(0, 50) + "...");
+          devLog("加密长度:", encrypted.length);
         } catch (error) {
           console.error("RSA加密测试失败:", error);
         }
@@ -322,12 +326,12 @@ onMounted(() => {
 
     // @ts-ignore
     window.testRSA = () => {
-      console.log("=== 测试RSA加密 ===");
+      devLog("=== 测试RSA加密 ===");
       const testData = ["123456", "admin", "password", "test"];
       testData.forEach(data => {
         try {
           const encrypted = rsaSimple.encryptPassword(data);
-          console.log(`明文: ${data} -> 加密长度: ${encrypted.length}`);
+          devLog(`明文: ${data} -> 加密长度: ${encrypted.length}`);
         } catch (error) {
           console.error(`加密失败 ${data}:`, error.message);
         }
@@ -337,41 +341,41 @@ onMounted(() => {
 });
 
 const ruleForm = reactive({
-  username: "admin",
-  password: "123456", // 修改为后端实际密码
+  username: import.meta.env.PROD ? "" : "admin",
+  password: import.meta.env.PROD ? "" : "123456",
   verifyCode: ""
 });
 
 const onLogin = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
 
-  console.log("=== 登录开始 ===");
-  console.log("验证码值:", ruleForm.verifyCode);
-  console.log("UUID值:", verifyUuid.value);
-  console.log("UUID包含前缀:", verifyUuid.value.includes("captcha_code:"));
+  devLog("=== 登录开始 ===");
+  devLog("验证码值:", ruleForm.verifyCode);
+  devLog("UUID值:", verifyUuid.value);
+  devLog("UUID包含前缀:", verifyUuid.value.includes("captcha_code:"));
 
   await formEl.validate(async valid => {
-    console.log("表单验证结果:", valid);
+    devLog("表单验证结果:", valid);
 
     if (!valid) return;
 
     // 检查验证码是否为空
     if (!ruleForm.verifyCode) {
-      console.log("验证码为空，阻止登录");
+      devLog("验证码为空，阻止登录");
       message("请输入验证码", { type: "warning" });
       return;
     }
 
     // 验证验证码输入格式（算术验证码必须是数字）
     if (!validateCaptchaInput(ruleForm.verifyCode)) {
-      console.log("验证码格式错误:", ruleForm.verifyCode);
+      devLog("验证码格式错误:", ruleForm.verifyCode);
       message("验证码必须是数字，请重新输入", { type: "warning" });
       return;
     }
 
     // 检查UUID是否存在
     if (!verifyUuid.value) {
-      console.log("UUID为空，刷新验证码");
+      devLog("UUID为空，刷新验证码");
       message("验证码已失效，请刷新验证码", { type: "warning" });
       getBackendVerifyCode();
       return;
@@ -379,7 +383,7 @@ const onLogin = async (formEl: FormInstance | undefined) => {
 
     // 记录验证码输入时间（用于调试）
     const inputTime = new Date().toISOString();
-    console.log("验证码输入时间:", inputTime);
+    devLog("验证码输入时间:", inputTime);
 
     // 不再检查UUID格式，直接使用后端返回的UUID
     // 后端返回什么就用什么
@@ -396,31 +400,31 @@ const onLogin = async (formEl: FormInstance | undefined) => {
 
     try {
       // 密码处理
-      console.log("处理密码...");
+      devLog("处理密码...");
       let passwordToSend = ruleForm.password;
 
       // 尝试RSA加密
       if (rsaInitialized.value) {
-        console.log("尝试RSA加密...");
+        devLog("尝试RSA加密...");
         try {
           passwordToSend = rsaSimple.encryptPassword(ruleForm.password);
-          console.log("RSA加密成功，加密后长度:", passwordToSend.length);
-          console.log("加密结果前50字符:", passwordToSend.substring(0, 50));
+          devLog("RSA加密成功，加密后长度:", passwordToSend.length);
+          devLog("加密结果前50字符:", passwordToSend.substring(0, 50));
         } catch (rsaError: any) {
           console.error("RSA加密失败:", rsaError.message);
-          console.log("使用明文密码");
+          devLog("使用明文密码");
           passwordToSend = ruleForm.password;
         }
       } else {
-        console.log("RSA未初始化，使用明文密码");
+        devLog("RSA未初始化，使用明文密码");
       }
 
       // 使用完整的UUID（包含captcha_code:前缀）
       const uuid = verifyUuid.value;
-      console.log("发送的UUID:", uuid);
-      console.log("发送的用户名:", ruleForm.username);
-      console.log("发送的验证码:", ruleForm.verifyCode);
-      console.log(
+      devLog("发送的UUID:", uuid);
+      devLog("发送的用户名:", ruleForm.username);
+      devLog("发送的验证码:", ruleForm.verifyCode);
+      devLog(
         "发送的密码类型:",
         passwordToSend === ruleForm.password ? "明文" : "加密"
       );
@@ -434,22 +438,22 @@ const onLogin = async (formEl: FormInstance | undefined) => {
       });
 
       // 登录成功
-      console.log("✅ 登录成功！");
+      devLog("✅ 登录成功！");
       message("登录成功", { type: "success" });
 
       // 初始化动态路由
-      console.log("正在初始化动态路由...");
+      devLog("正在初始化动态路由...");
       await initRouter();
 
       // 获取顶部菜单并跳转
       const topMenu = getTopMenu(true);
-      console.log("顶部菜单:", topMenu);
+      devLog("顶部菜单:", topMenu);
 
       // 跳转到首页
       router
         .push(topMenu.path)
         .then(() => {
-          console.log("跳转成功");
+          devLog("跳转成功");
         })
         .catch(error => {
           console.error("路由跳转失败:", error);

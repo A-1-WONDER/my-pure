@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import ReCol from "@/components/ReCol";
 import { formRules } from "./utils/rule";
 import { FormProps } from "./utils/types";
@@ -46,6 +46,14 @@ const props = withDefaults(defineProps<FormProps>(), {
 
 const ruleFormRef = ref();
 const newFormInline = ref(props.formInline);
+
+watch(
+  () => props.formInline,
+  val => {
+    if (val) newFormInline.value = { ...val };
+  },
+  { immediate: true, deep: true }
+);
 
 function getRef() {
   return ruleFormRef.value;

@@ -1,7 +1,13 @@
 import editForm from "../form.vue";
 import { handleTree } from "@/utils/tree";
 import { message } from "@/utils/message";
-import { getMenuList } from "@/api/system";
+import {
+  getMenuList,
+  createMenu,
+  updateMenu,
+  deleteMenus,
+  clearRolePermissionTreeCache
+} from "@/api/system";
 import { transformI18n } from "@/plugins/i18n";
 import { addDialog } from "@/components/ReDialog";
 import { reactive, ref, onMounted, h } from "vue";
@@ -94,8 +100,8 @@ export function useMenu() {
     }
   ];
 
-  function handleSelectionChange(val) {
-    console.log("handleSelectionChange", val);
+  function handleSelectionChange(_val) {
+    // selection reserved
   }
 
   function resetForm(formEl) {
@@ -144,6 +150,7 @@ export function useMenu() {
       title: `${title}菜单`,
       props: {
         formInline: {
+          id: row?.id,
           menuType: row?.menuType ?? 0,
           higherMenuOptions: formatHigherMenuOptions(cloneDeep(dataList.value)),
           parentId: row?.parentId ?? 0,
@@ -177,38 +184,44 @@ export function useMenu() {
       beforeSure: (done, { options }) => {
         const FormRef = formRef.value.getRef();
         const curData = options.props.formInline as FormItemProps;
-        function chores() {
-          message(
-            `您${title}了菜单名称为${transformI18n(curData.title)}的这条数据`,
-            {
-              type: "success"
-            }
-          );
-          done(); // 关闭弹框
-          onSearch(); // 刷新表格数据
-        }
-        FormRef.validate(valid => {
-          if (valid) {
-            console.log("curData", curData);
-            // 表单规则校验通过
+        FormRef.validate(async valid => {
+          if (!valid) return;
+          try {
             if (title === "新增") {
-              // 实际开发先调用新增接口，再进行下面操作
-              chores();
+              await createMenu(curData);
             } else {
-              // 实际开发先调用修改接口，再进行下面操作
-              chores();
+              await updateMenu(curData);
             }
+            clearRolePermissionTreeCache();
+            message(
+              `已${title}菜单「${transformI18n(curData.title) || curData.title}」`,
+              { type: "success" }
+            );
+            done();
+            onSearch();
+          } catch {
+            message(`${title}菜单失败，请检查权限 menu:add/menu:edit`, {
+              type: "error"
+            });
           }
         });
       }
     });
   }
 
-  function handleDelete(row) {
-    message(`您删除了菜单名称为${transformI18n(row.title)}的这条数据`, {
-      type: "success"
-    });
-    onSearch();
+  async function handleDelete(row) {
+    try {
+      await deleteMenus([row.id]);
+      clearRolePermissionTreeCache();
+      message(`已删除菜单「${transformI18n(row.title) || row.title}」`, {
+        type: "success"
+      });
+      onSearch();
+    } catch {
+      message("删除菜单失败，请确认无子菜单或具备 menu:del 权限", {
+        type: "error"
+      });
+    }
   }
 
   onMounted(() => {

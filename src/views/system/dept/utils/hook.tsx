@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import editForm from "../form.vue";
 import { handleTree } from "@/utils/tree";
 import { message } from "@/utils/message";
-import { getDeptList } from "@/api/system";
+import { getDeptList, createDept, updateDept, deleteDepts } from "@/api/system";
 import { usePublicHooks } from "../../hooks";
 import { addDialog } from "@/components/ReDialog";
 import { reactive, ref, onMounted, h } from "vue";
@@ -62,8 +62,8 @@ export function useDept() {
     }
   ];
 
-  function handleSelectionChange(val) {
-    console.log("handleSelectionChange", val);
+  function handleSelectionChange(_val) {
+    // selection reserved
   }
 
   function resetForm(formEl) {
@@ -114,6 +114,7 @@ export function useDept() {
       title: `${title}部门`,
       props: {
         formInline: {
+          id: row?.id,
           higherDeptOptions: formatHigherDeptOptions(cloneDeep(dataList.value)),
           parentId: row?.parentId ?? 0,
           name: row?.name ?? "",
@@ -134,33 +135,37 @@ export function useDept() {
       beforeSure: (done, { options }) => {
         const FormRef = formRef.value.getRef();
         const curData = options.props.formInline as FormItemProps;
-        function chores() {
-          message(`您${title}了部门名称为${curData.name}的这条数据`, {
-            type: "success"
-          });
-          done(); // 关闭弹框
-          onSearch(); // 刷新表格数据
-        }
-        FormRef.validate(valid => {
-          if (valid) {
-            console.log("curData", curData);
-            // 表单规则校验通过
+        FormRef.validate(async valid => {
+          if (!valid) return;
+          try {
             if (title === "新增") {
-              // 实际开发先调用新增接口，再进行下面操作
-              chores();
+              await createDept(curData);
             } else {
-              // 实际开发先调用修改接口，再进行下面操作
-              chores();
+              await updateDept(curData);
             }
+            message(`已${title}部门「${curData.name}」`, { type: "success" });
+            done();
+            onSearch();
+          } catch {
+            message(`${title}部门失败，请检查权限 dept:add/dept:edit`, {
+              type: "error"
+            });
           }
         });
       }
     });
   }
 
-  function handleDelete(row) {
-    message(`您删除了部门名称为${row.name}的这条数据`, { type: "success" });
-    onSearch();
+  async function handleDelete(row) {
+    try {
+      await deleteDepts([row.id]);
+      message(`已删除部门「${row.name}」`, { type: "success" });
+      onSearch();
+    } catch {
+      message("删除部门失败，请确认无子部门/用户关联或具备 dept:del 权限", {
+        type: "error"
+      });
+    }
   }
 
   onMounted(() => {

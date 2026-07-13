@@ -41,7 +41,9 @@ export default {
       meta: {
         icon: "ep:menu",
         title: $t("menus.pureSystemMenu"),
-        roles: ["admin"]
+        roles: ["admin"],
+        // 侧栏隐藏：本项目暂不用菜单管理，路由保留可直接访问 /system/menu
+        showLink: false
       }
     },
     {

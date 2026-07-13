@@ -282,7 +282,9 @@ async function fetchEnergySeries(
     const { rows } = await loadEnergySummaryDisplay(params, { timeoutMs });
     return rows;
   } catch (error) {
-    console.warn("[welcome] 用电量汇总失败:", params, error);
+    if (import.meta.env.DEV) {
+      console.warn("[welcome] 用电量汇总失败:", params, error);
+    }
     return [];
   }
 }
@@ -394,17 +396,69 @@ const writePowerSummaryCache = (payload: PowerSummaryCachePayload) => {
   }
 };
 
+const buildPowerSummaryCachePayload = (
+  keys: PowerSummaryKeySet
+): PowerSummaryCachePayload => ({
+  at: Date.now(),
+  todayKey: keys.today,
+  yesterdayKey: keys.yesterday,
+  thisMonthKey: keys.thisMonth,
+  lastMonthKey: keys.lastMonth,
+  thisYearKey: keys.thisYear,
+  lastYearKey: keys.lastYear,
+  powerToday: powerToday.value,
+  powerYesterday: powerYesterday.value,
+  powerThisMonth: powerThisMonth.value,
+  powerLastMonth: powerLastMonth.value,
+  powerThisYear: powerThisYear.value,
+  powerLastYear: powerLastYear.value
+});
+
+/** 年维度汇总较慢，后台加载，不阻塞日/月 KPI */
+const loadYearPowerSummary = async (keys: PowerSummaryKeySet) => {
+  powerYearLoading.value = true;
+  try {
+    const thisYearRows = await fetchEnergySeries(
+      {
+        dimension: "year",
+        startTime: keys.thisYear,
+        endTime: keys.thisYear,
+        ignoreRadio: 0
+      },
+      YEAR_SUMMARY_TIMEOUT_COLD_MS
+    );
+    powerThisYear.value = pickConsumptionByKey(thisYearRows, keys.thisYear);
+
+    const lastYearRows = await fetchEnergySeries(
+      {
+        dimension: "year",
+        startTime: keys.lastYear,
+        endTime: keys.lastYear,
+        ignoreRadio: 0
+      },
+      YEAR_SUMMARY_TIMEOUT_COLD_MS
+    );
+    powerLastYear.value = pickConsumptionByKey(lastYearRows, keys.lastYear);
+
+    writePowerSummaryCache(buildPowerSummaryCachePayload(keys));
+  } finally {
+    powerYearLoading.value = false;
+  }
+};
+
 const loadPowerSummary = async () => {
   const keys = computePowerSummaryKeys();
   const cached = loadPowerSummaryCacheRaw();
   const cacheUsable =
     cached &&
     powerSummaryKeysMatch(cached, keys) &&
-    isPowerSummaryCacheFresh(cached) &&
-    !powerSummaryNeedsYearRefresh(cached);
+    isPowerSummaryCacheFresh(cached);
 
   if (cacheUsable) {
     applyPowerSummaryCache(cached);
+    if (powerSummaryNeedsYearRefresh(cached)) {
+      void loadYearPowerSummary(keys);
+    }
     return;
   }
 
@@ -430,50 +484,12 @@ const loadPowerSummary = async () => {
     powerLastMonth.value = pickConsumptionByKey(monthRows, keys.lastMonth);
     powerSummaryHasSnapshot.value = true;
 
-    powerYearLoading.value = true;
-    try {
-      const thisYearRows = await fetchEnergySeries(
-        {
-          dimension: "year",
-          startTime: keys.thisYear,
-          endTime: keys.thisYear,
-          ignoreRadio: 0
-        },
-        YEAR_SUMMARY_TIMEOUT_MS
-      );
-      powerThisYear.value = pickConsumptionByKey(thisYearRows, keys.thisYear);
-
-      const lastYearRows = await fetchEnergySeries(
-        {
-          dimension: "year",
-          startTime: keys.lastYear,
-          endTime: keys.lastYear,
-          ignoreRadio: 0
-        },
-        YEAR_SUMMARY_TIMEOUT_COLD_MS
-      );
-      powerLastYear.value = pickConsumptionByKey(lastYearRows, keys.lastYear);
-    } finally {
-      powerYearLoading.value = false;
-    }
-
-    writePowerSummaryCache({
-      at: Date.now(),
-      todayKey: keys.today,
-      yesterdayKey: keys.yesterday,
-      thisMonthKey: keys.thisMonth,
-      lastMonthKey: keys.lastMonth,
-      thisYearKey: keys.thisYear,
-      lastYearKey: keys.lastYear,
-      powerToday: powerToday.value,
-      powerYesterday: powerYesterday.value,
-      powerThisMonth: powerThisMonth.value,
-      powerLastMonth: powerLastMonth.value,
-      powerThisYear: powerThisYear.value,
-      powerLastYear: powerLastYear.value
-    });
+    writePowerSummaryCache(buildPowerSummaryCachePayload(keys));
+    void loadYearPowerSummary(keys);
   } catch (e) {
-    console.error("加载近期用电量汇总失败:", e);
+    if (import.meta.env.DEV) {
+      console.error("加载近期用电量汇总失败:", e);
+    }
     if (!powerSummaryHasSnapshot.value) {
       powerToday.value = 0;
       powerYesterday.value = 0;

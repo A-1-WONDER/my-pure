@@ -177,6 +177,69 @@ export function mapEladminMenu(menu: Record<string, any>) {
   };
 }
 
+/** pure-admin 菜单表单 → eladmin 写入体 */
+export function buildEladminMenuPayloadFromForm(form: {
+  id?: number;
+  menuType: number;
+  parentId: number;
+  title: string;
+  name?: string;
+  path?: string;
+  component?: string;
+  rank?: number;
+  auths?: string;
+  icon?: string;
+  keepAlive?: boolean;
+  showLink?: boolean;
+}) {
+  let type = 1;
+  let iFrame = false;
+  if (form.menuType === 3) {
+    type = 2;
+  } else if (form.menuType === 1 || form.menuType === 2) {
+    type = 1;
+    iFrame = true;
+  } else {
+    type = form.component ? 1 : 0;
+  }
+
+  const pid = form.parentId && form.parentId > 0 ? form.parentId : null;
+
+  return {
+    ...(form.id ? { id: form.id } : {}),
+    pid,
+    title: form.title,
+    componentName: form.name || null,
+    component: form.component || null,
+    path: form.path || "",
+    menuSort: form.rank ?? 999,
+    permission: form.auths || null,
+    icon: form.icon || null,
+    cache: form.keepAlive === true,
+    hidden: form.showLink === false,
+    type,
+    iFrame
+  };
+}
+
+/** pure-admin 部门表单 → eladmin 写入体 */
+export function buildEladminDeptPayloadFromForm(form: {
+  id?: number;
+  parentId: number;
+  name: string;
+  sort?: number;
+  status?: number;
+}) {
+  const pid = form.parentId && form.parentId > 0 ? form.parentId : null;
+  return {
+    ...(form.id ? { id: form.id } : {}),
+    pid,
+    name: form.name,
+    deptSort: form.sort ?? 0,
+    enabled: form.status !== 0
+  };
+}
+
 /** eladmin Role → pure-admin 角色行 */
 export function mapEladminRole(role: Record<string, any>) {
   return {

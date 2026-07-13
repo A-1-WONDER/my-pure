@@ -244,7 +244,7 @@ onMounted(async () => {
                   :href="form.apiDocUrl"
                   type="primary"
                   target="_blank"
-                  :underline="false"
+                  underline="never"
                   class="api-auth-link"
                 >
                   {{ form.apiDocUrl }}

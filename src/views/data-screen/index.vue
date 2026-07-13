@@ -81,10 +81,10 @@ const summarySeriesCache = new Map<
   { at: number; rows: StatsDisplayData[] }
 >();
 
-/** 图表 / KPI：仅近 3 个自然月（避免一次拉 13 个月导致 120s 超时） */
+/** 图表 / KPI：近 4 个自然月（含四月等稍早月份；过大范围易触发 120s 超时） */
 const buildMonthChartSummaryParams = () => {
   const endTime = dayjs().format("YYYYMM");
-  const startTime = dayjs().subtract(2, "month").format("YYYYMM");
+  const startTime = dayjs().subtract(3, "month").format("YYYYMM");
   const chartMonthKeys: string[] = [];
   let cur = dayjs(`${startTime.slice(0, 4)}-${startTime.slice(4, 6)}-01`);
   const end = dayjs(`${endTime.slice(0, 4)}-${endTime.slice(4, 6)}-01`);

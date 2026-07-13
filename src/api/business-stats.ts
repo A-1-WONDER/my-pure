@@ -310,7 +310,7 @@ export const getEnergyStatisticsSummaryErrorMessage = (
  * 获取用电量统计汇总数据
  * GET /api/external/energy-statistics/summary
  * 参数：dimension(维度), startTime(开始时间), endTime(结束时间), ignoreRadio(可选)
- * 注意：此接口不需要登录token
+ * 需登录后访问（JWT）
  */
 /** 汇总接口常涉及大范围聚合，后端可能较慢，单独放宽超时（默认 axios 为 10s） */
 const ENERGY_SUMMARY_TIMEOUT_MS = 120000;

@@ -41,7 +41,7 @@ const tabsList = [
 ];
 
 const pageList = computed(() =>
-  copyIconList[currentActiveType.value]
+  getIconBucket(currentActiveType.value)
     .filter(i => i.includes(filterValue.value))
     .slice(
       (currentPage.value - 1) * pageSize.value,
@@ -60,22 +60,37 @@ const iconItemStyle = computed((): ParameterCSSProperties => {
   };
 });
 
+function resolveIconType(iconValue: string) {
+  const colonIndex = iconValue.indexOf(":");
+  if (colonIndex > 0) {
+    return {
+      type: iconValue.substring(0, colonIndex + 1),
+      name: iconValue.substring(colonIndex + 1)
+    };
+  }
+  // eladmin 等后端常返回无冒号前缀的图标名（如 monitor、system）
+  return { type: "ep:", name: iconValue };
+}
+
+function getIconBucket(type: string) {
+  return copyIconList[type as keyof typeof copyIconList] ?? [];
+}
+
 function setVal() {
-  currentActiveType.value = inputValue.value.substring(
-    0,
-    inputValue.value.indexOf(":") + 1
-  );
-  icon.value = inputValue.value.substring(inputValue.value.indexOf(":") + 1);
+  if (isAllEmpty(inputValue.value)) return;
+  const { type, name } = resolveIconType(String(inputValue.value));
+  currentActiveType.value = tabsList.some(t => t.name === type) ? type : "ep:";
+  icon.value = name;
 }
 
 function onBeforeEnter() {
-  if (isAllEmpty(icon.value)) return;
+  if (isAllEmpty(inputValue.value)) return;
   setVal();
-  // 寻找当前图标在第几页
-  const curIconIndex = copyIconList[currentActiveType.value].findIndex(
-    i => i === icon.value
-  );
-  currentPage.value = Math.ceil((curIconIndex + 1) / pageSize.value);
+  const bucket = getIconBucket(currentActiveType.value);
+  const curIconIndex = bucket.findIndex(i => i === icon.value);
+  if (curIconIndex >= 0) {
+    currentPage.value = Math.ceil((curIconIndex + 1) / pageSize.value);
+  }
 }
 
 function onAfterLeave() {
@@ -104,14 +119,16 @@ function onClear() {
 watch(
   () => pageList.value,
   () =>
-    (totalPage.value = copyIconList[currentActiveType.value].filter(i =>
+    (totalPage.value = getIconBucket(currentActiveType.value).filter(i =>
       i.includes(filterValue.value)
     ).length),
   { immediate: true }
 );
 watch(
   () => inputValue.value,
-  val => val && setVal(),
+  val => {
+    if (val) setVal();
+  },
   { immediate: true }
 );
 watch(

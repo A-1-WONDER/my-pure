@@ -115,9 +115,9 @@ const chartRef = ref();
 let chartInstance: echarts.ECharts | null = null;
 
 const form = reactive({
-  /** 默认最近 3 个自然月（含当月）；看全年时在此拉大范围 */
+  /** 默认最近 4 个自然月（含当月）；看全年时在此拉大范围 */
   monthRange: [
-    dayjs().subtract(2, "month").format("YYYY-MM"),
+    dayjs().subtract(3, "month").format("YYYY-MM"),
     dayjs().format("YYYY-MM")
   ] as string[],
   meterType: ""
@@ -184,7 +184,7 @@ const loadMonthlyStatsFromMonthPower = async () => {
     form.monthRange?.length === 2
       ? form.monthRange
       : [
-          dayjs().subtract(2, "month").format("YYYY-MM"),
+          dayjs().subtract(3, "month").format("YYYY-MM"),
           dayjs().format("YYYY-MM")
         ];
   const yearMonths = listYearMonthsInclusive(range[0], range[1]);
@@ -279,7 +279,7 @@ const loadMonthlyStatsFromSummary = async (options?: {
     form.monthRange?.length === 2
       ? form.monthRange
       : [
-          dayjs().subtract(2, "month").format("YYYY-MM"),
+          dayjs().subtract(3, "month").format("YYYY-MM"),
           dayjs().format("YYYY-MM")
         ];
   const [sYm, eYm] = normalizeMonthRangeEnds(range[0], range[1]);
@@ -414,7 +414,7 @@ const onSearch = async (options?: { force?: boolean }) => {
     form.monthRange?.length === 2
       ? form.monthRange
       : [
-          dayjs().subtract(2, "month").format("YYYY-MM"),
+          dayjs().subtract(3, "month").format("YYYY-MM"),
           dayjs().format("YYYY-MM")
         ];
   const [sYm, eYm] = normalizeMonthRangeEnds(range[0], range[1]);
@@ -472,7 +472,7 @@ const resetForm = formEl => {
   if (!formEl) return;
   formEl.resetFields();
   form.monthRange = [
-    dayjs().subtract(2, "month").format("YYYY-MM"),
+    dayjs().subtract(3, "month").format("YYYY-MM"),
     dayjs().format("YYYY-MM")
   ];
   form.meterType = "";

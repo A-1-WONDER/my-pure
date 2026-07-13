@@ -104,9 +104,9 @@ const filters = reactive({
     dayjs().subtract(6, "day").format("YYYY-MM-DD"),
     dayjs().format("YYYY-MM-DD")
   ] as string[],
-  /** 月视图：默认最近 3 个自然月（含当月），需全年时在月份范围里自行拉大 */
+  /** 月视图：默认最近 4 个自然月（含当月），需全年时在月份范围里自行拉大 */
   monthRange: [
-    dayjs().subtract(2, "month").format("YYYY-MM"),
+    dayjs().subtract(3, "month").format("YYYY-MM"),
     dayjs().format("YYYY-MM")
   ] as string[],
   /** 年视图：默认同一年，减少请求；需多年对比时改年份范围 */
@@ -160,7 +160,7 @@ const currentPickerValue = computed({
         filters.monthRange = Array.isArray(value)
           ? (value as string[])
           : [
-              dayjs().subtract(2, "month").format("YYYY-MM"),
+              dayjs().subtract(3, "month").format("YYYY-MM"),
               dayjs().format("YYYY-MM")
             ];
         break;
@@ -272,7 +272,7 @@ const buildSummaryRequestParams = (): EnergyStatsQueryParams => {
         filters.monthRange?.length === 2
           ? filters.monthRange
           : [
-              dayjs().subtract(2, "month").format("YYYY-MM"),
+              dayjs().subtract(3, "month").format("YYYY-MM"),
               dayjs().format("YYYY-MM")
             ];
       const [m0, m1] = normalizeMonthRangeEnds(range[0], range[1]);
@@ -341,7 +341,7 @@ const loadMonthViewFromDeviceMonthPower = async (): Promise<
     filters.monthRange?.length === 2
       ? filters.monthRange
       : [
-          dayjs().subtract(2, "month").format("YYYY-MM"),
+          dayjs().subtract(3, "month").format("YYYY-MM"),
           dayjs().format("YYYY-MM")
         ];
   const yearMonths = listYearMonthsInclusive(range[0], range[1]);
