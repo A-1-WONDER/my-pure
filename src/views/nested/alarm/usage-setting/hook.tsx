@@ -1,57 +1,93 @@
+import dayjs from "dayjs";
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
 import { message } from "@/utils/message";
 import {
   deleteAlarmRule,
+  getAlarmEventQueryList,
   getAlarmRuleList,
   saveAlarmRule,
   type AlarmRulePayload
 } from "@/api/alarm";
-import { alarmRuleRowToSavePayload } from "../rule-config/rule-detail-utils";
+import { getCollectorList } from "@/api/collector";
+import { getMeterList } from "@/api/meters";
+import { extractTargetIds } from "../rule-config/rule-detail-utils";
 import type { PaginationProps } from "@pureadmin/table";
+import { ElMessageBox } from "element-plus";
 
-/** 用量/阈值类报警类型 */
-export const USAGE_ALARM_TYPES = new Set([
-  "electric_usage_abnormal",
-  "electric_threshold_exceeded",
-  "electric_power_abnormal",
-  "electric_balance_low"
-]);
+export type UsageViewMode = "monitor" | "add";
 
-function unwrapRuleList(res: Record<string, any>): any[] {
+const USAGE_TYPES = new Set(["continuous_low_usage", "continuous_high_usage"]);
+
+function unwrapList(res: Record<string, any>): any[] {
   if (!res) return [];
   if (Array.isArray(res)) return res;
   const d = res.data ?? res;
   if (Array.isArray(d?.list)) return d.list;
   if (Array.isArray(d?.content)) return d.content;
   if (Array.isArray(d?.records)) return d.records;
+  if (Array.isArray(d)) return d;
   return [];
 }
 
 function isUsageRule(row: Record<string, any>) {
-  const type = String(row.alarmType ?? row.alarm_type ?? "");
-  if (USAGE_ALARM_TYPES.has(type)) return true;
-  return (
-    row.metric != null || row.threshold != null || row.thresholdValue != null
-  );
+  const type = String(row.alarmType ?? row.conditionType ?? "");
+  if (USAGE_TYPES.has(type)) return true;
+  if (type.includes("usage") || type.includes("day_power")) return true;
+  return String(row.metric ?? "") === "day_power";
 }
 
-function formatThreshold(row: Record<string, any>) {
-  const metric = row.metric ?? "—";
-  const op = row.compareOp ?? row.compareType ?? "";
-  const threshold = row.threshold ?? row.thresholdValue;
-  if (threshold == null) return "—";
-  return `${metric} ${op} ${threshold}`.trim();
+/** 与后端评估一致：用量规则 targetIds 为空 = 应用到全部电能表 */
+function usageRuleTargetIds(rule: Record<string, any>): number[] | "all" {
+  const ids = extractTargetIds(rule);
+  return ids.length === 0 ? "all" : ids;
+}
+
+function formatCompareOp(op: unknown) {
+  const s = String(op ?? "");
+  if (s === "lt") return "低于";
+  if (s === "gt") return "高于";
+  return s || "—";
+}
+
+function formatTime(v: unknown) {
+  if (v == null || v === "") return "—";
+  const d = dayjs(v as string);
+  return d.isValid() ? d.format("YYYY-MM-DD HH:mm:ss") : String(v);
 }
 
 export function useAlarmUsageSetting() {
-  const router = useRouter();
+  const activeView = ref<UsageViewMode>("monitor");
   const loading = ref(false);
-  const allRules = ref<Record<string, any>[]>([]);
+  const saving = ref(false);
 
-  const form = reactive({
-    ruleName: "",
-    enabled: "" as "" | "true" | "false"
+  const collectors = ref<Record<string, any>[]>([]);
+  const meters = ref<Record<string, any>[]>([]);
+  const usageRules = ref<Record<string, any>[]>([]);
+  /** meterId → 最近报警时间 */
+  const lastAlarmMap = ref<Record<number, string>>({});
+
+  const filter = reactive({
+    collectorId: "" as "" | number | string,
+    ruleId: "" as "" | number | string,
+    meterAddress: "",
+    userName: ""
+  });
+
+  const appliedFilter = reactive({
+    collectorId: "" as "" | number | string,
+    ruleId: "" as "" | number | string,
+    meterAddress: "",
+    userName: ""
+  });
+
+  const addForm = reactive({
+    name: "",
+    deviceType: "electric_meter",
+    period: "day",
+    rangeOp: "lt" as "lt" | "gt",
+    thresholdKwh: undefined as number | undefined,
+    silenceDays: 1,
+    applyAll: true
   });
 
   const pagination = reactive<PaginationProps>({
@@ -61,153 +97,457 @@ export function useAlarmUsageSetting() {
     background: true
   });
 
-  const filteredRules = computed(() => {
-    let list = allRules.value.filter(isUsageRule);
-    if (form.ruleName.trim()) {
-      const kw = form.ruleName.trim().toLowerCase();
-      list = list.filter(row =>
-        String(row.ruleName ?? "")
-          .toLowerCase()
-          .includes(kw)
+  const collectorOptions = computed(() => {
+    return collectors.value.map(c => ({
+      value: Number(c.id ?? c.collectorId),
+      label: String(
+        c.collectorNo ?? c.code ?? c.collectorCode ?? c.name ?? c.id ?? ""
+      )
+    }));
+  });
+
+  const ruleOptions = computed(() =>
+    usageRules.value.map(r => ({
+      value: Number(r.id),
+      label: String(r.ruleName ?? `规则${r.id}`)
+    }))
+  );
+
+  const collectorNoById = computed(() => {
+    const map: Record<number, string> = {};
+    for (const c of collectors.value) {
+      const id = Number(c.id ?? c.collectorId);
+      if (!Number.isFinite(id)) continue;
+      map[id] = String(
+        c.collectorNo ?? c.code ?? c.collectorCode ?? c.name ?? id
       );
     }
-    if (form.enabled === "true") {
-      list = list.filter(row => row.enabled !== false);
-    } else if (form.enabled === "false") {
-      list = list.filter(row => row.enabled === false);
+    return map;
+  });
+
+  /** meterId → 绑定的用量规则名 */
+  const ruleNameByMeterId = computed(() => {
+    const map: Record<number, string> = {};
+    const append = (mid: number, name: string) => {
+      if (!Number.isFinite(mid) || !name) return;
+      if (!map[mid]) map[mid] = name;
+      else if (!map[mid].includes(name)) map[mid] = `${map[mid]}、${name}`;
+    };
+    for (const rule of usageRules.value) {
+      const name = String(rule.ruleName ?? "");
+      const targets = usageRuleTargetIds(rule);
+      if (targets === "all") {
+        for (const m of meters.value) {
+          append(Number(m.id), name);
+        }
+      } else {
+        for (const id of targets) append(id, name);
+      }
+    }
+    return map;
+  });
+
+  /** 已配置的用量参数设置列表（用户添加后应能在此直接看到） */
+  const usageSettingRows = computed(() =>
+    usageRules.value.map(r => {
+      const targets = usageRuleTargetIds(r);
+      const silenceMin = Number(r.silenceMinutes ?? 0);
+      const silenceDays = Number.isFinite(silenceMin)
+        ? Math.round((silenceMin / 1440) * 100) / 100
+        : 0;
+      return {
+        id: r.id,
+        ruleName: String(r.ruleName ?? "—"),
+        rangeText: `${formatCompareOp(r.compareOp)} ${r.threshold ?? "—"} Kwh`,
+        silenceDays,
+        scopeText:
+          targets === "all"
+            ? `全部电能表（${meters.value.length}）`
+            : `指定 ${targets.length} 块表`,
+        enabled: r.enabled !== false,
+        createTime: r.createTime ?? r.updateTime ?? ""
+      };
+    })
+  );
+
+  const usageSettingColumns: TableColumnList = [
+    { label: "序号", type: "index", width: 70 },
+    { label: "设置名称", prop: "ruleName", minWidth: 160 },
+    { label: "区间用量", prop: "rangeText", minWidth: 140 },
+    {
+      label: "静默期",
+      prop: "silenceDays",
+      width: 100,
+      formatter: row => `${row.silenceDays} 天`
+    },
+    { label: "应用范围", prop: "scopeText", minWidth: 140 },
+    {
+      label: "状态",
+      prop: "enabled",
+      width: 90,
+      formatter: row => (row.enabled ? "启用" : "停用")
+    },
+    {
+      label: "操作",
+      fixed: "right",
+      width: 100,
+      slot: "usageSettingOps"
+    }
+  ];
+
+  const filteredRows = computed(() => {
+    let list = meters.value.slice();
+    const cid = appliedFilter.collectorId;
+    if (cid !== "" && cid != null) {
+      const n = Number(cid);
+      list = list.filter(m => Number(m.collectorId) === n);
+    }
+    const rid = appliedFilter.ruleId;
+    if (rid !== "" && rid != null) {
+      const rule = usageRules.value.find(r => Number(r.id) === Number(rid));
+      if (rule) {
+        const targets = usageRuleTargetIds(rule);
+        if (targets !== "all") {
+          const ids = new Set(targets);
+          list = list.filter(m => ids.has(Number(m.id)));
+        }
+      } else {
+        list = [];
+      }
+    }
+    const addr = appliedFilter.meterAddress.trim().toLowerCase();
+    if (addr) {
+      list = list.filter(m => {
+        const a = String(
+          m.meterNo ?? m.meterAddress ?? m.communication ?? ""
+        ).toLowerCase();
+        return a.includes(addr);
+      });
+    }
+    const user = appliedFilter.userName.trim().toLowerCase();
+    if (user) {
+      list = list.filter(m =>
+        String(m.userName ?? m.username ?? "")
+          .toLowerCase()
+          .includes(user)
+      );
     }
     return list;
   });
 
   const dataList = computed(() => {
     const start = (pagination.currentPage - 1) * pagination.pageSize;
-    return filteredRules.value.slice(start, start + pagination.pageSize);
+    return filteredRows.value.slice(start, start + pagination.pageSize);
   });
 
   const columns: TableColumnList = [
-    { label: "规则名称", prop: "ruleName", minWidth: 160 },
     {
-      label: "报警类型",
-      prop: "alarmType",
-      minWidth: 150,
-      formatter: ({ alarmType }) => getAlarmTypeLabel(alarmType)
+      label: "序号",
+      type: "index",
+      width: 70,
+      index: (i: number) =>
+        (pagination.currentPage - 1) * pagination.pageSize + i + 1
     },
     {
-      label: "用量条件",
-      prop: "threshold",
-      minWidth: 180,
-      formatter: row => formatThreshold(row)
+      label: "采集器编号",
+      prop: "collectorNo",
+      minWidth: 140,
+      formatter: row => {
+        const cid = Number(row.collectorId);
+        return collectorNoById.value[cid] || (row.collectorId ?? "—");
+      }
     },
     {
-      label: "级别",
-      prop: "alarmLevel",
-      minWidth: 90,
-      formatter: ({ alarmLevel }) => getAlarmLevelLabel(alarmLevel)
+      label: "通讯地址",
+      prop: "meterNo",
+      minWidth: 160,
+      formatter: row =>
+        String(row.meterNo ?? row.meterAddress ?? row.communication ?? "—") ||
+        "—"
     },
     {
-      label: "状态",
-      prop: "enabled",
-      minWidth: 90,
-      cellRenderer: ({ row, props }) => (
-        <el-tag
-          size={props.size}
-          type={row.enabled === false ? "info" : "success"}
-          effect="plain"
-        >
-          {row.enabled === false ? "停用" : "启用"}
-        </el-tag>
-      )
+      label: "用戶",
+      prop: "userName",
+      minWidth: 120,
+      formatter: row => String(row.userName ?? row.username ?? "—") || "—"
     },
     {
-      label: "操作",
-      fixed: "right",
-      slot: "operation",
-      minWidth: 220
+      label: "报警设置",
+      prop: "alarmSetting",
+      minWidth: 160,
+      formatter: row => {
+        const mid = Number(row.id);
+        return ruleNameByMeterId.value[mid] || "未设置";
+      }
+    },
+    {
+      label: "最近报警时间",
+      prop: "lastAlarmTime",
+      minWidth: 170,
+      formatter: row => {
+        const mid = Number(row.id);
+        return formatTime(lastAlarmMap.value[mid]);
+      }
+    },
+    {
+      label: "创建时间",
+      prop: "createTime",
+      minWidth: 170,
+      formatter: row =>
+        formatTime(row.createTime ?? row.createdAt ?? row.installTime)
     }
   ];
 
-  async function loadRules() {
-    loading.value = true;
+  async function loadCollectors() {
+    try {
+      const res = (await getCollectorList({
+        page: 1,
+        pageSize: 10000
+      })) as Record<string, any>;
+      collectors.value = unwrapList(res);
+    } catch {
+      collectors.value = [];
+      message("加载采集器失败", { type: "warning" });
+    }
+  }
+
+  async function loadMeters() {
+    try {
+      const res = (await getMeterList({
+        page: 1,
+        size: 10000,
+        meterType: "electric"
+      })) as Record<string, any>;
+      let list = unwrapList(res);
+      if (!list.length) {
+        const res2 = (await getMeterList({
+          page: 1,
+          size: 10000
+        })) as Record<string, any>;
+        list = unwrapList(res2);
+      }
+      // 优先电能表
+      const electric = list.filter(m => {
+        const t = String(m.meterType ?? m.type ?? "").toLowerCase();
+        return !t || t.includes("electric") || t === "1" || t.includes("电");
+      });
+      meters.value = electric.length ? electric : list;
+    } catch {
+      meters.value = [];
+      message("加载电表失败", { type: "warning" });
+    }
+  }
+
+  async function loadUsageRules() {
     try {
       const res = (await getAlarmRuleList({
         currentPage: 1,
         pageSize: 500
       })) as Record<string, any>;
-      allRules.value = unwrapRuleList(res);
-      pagination.total = filteredRules.value.length;
-      pagination.currentPage = 1;
+      usageRules.value = unwrapList(res).filter(isUsageRule);
     } catch {
-      allRules.value = [];
-      pagination.total = 0;
-      message("加载用量报警规则失败", { type: "error" });
+      usageRules.value = [];
+    }
+  }
+
+  async function loadRecentAlarms() {
+    try {
+      const res = (await getAlarmEventQueryList({
+        alarmType: "",
+        alarmLevel: "",
+        alarmStatus: "",
+        alarmTime: "",
+        pageSize: 200,
+        currentPage: 1
+      })) as Record<string, any>;
+      const ok = res?.code === 0 || res?.success === true;
+      const list = ok ? unwrapList(res) : [];
+      const map: Record<number, string> = {};
+      for (const ev of list) {
+        const type = String(ev.alarmType ?? "");
+        const isUsage =
+          USAGE_TYPES.has(type) ||
+          type.includes("usage") ||
+          type.includes("day_power");
+        if (!isUsage && type) {
+          // 仍记录用量相关；若类型未知也按表号挂最近时间，避免空列
+        }
+        const mid = Number(ev.deviceId ?? ev.meterId ?? ev.targetId);
+        const time = ev.alarmTime ?? ev.createTime;
+        if (!Number.isFinite(mid) || !time) continue;
+        const prev = map[mid];
+        if (!prev || dayjs(time).isAfter(dayjs(prev))) {
+          map[mid] = String(time);
+        }
+      }
+      // 再按 meterNo 匹配
+      const byNo: Record<string, string> = {};
+      for (const ev of list) {
+        const no = String(ev.meterNo ?? "").trim();
+        const time = ev.alarmTime ?? ev.createTime;
+        if (!no || !time) continue;
+        if (!byNo[no] || dayjs(time).isAfter(dayjs(byNo[no]))) {
+          byNo[no] = String(time);
+        }
+      }
+      for (const m of meters.value) {
+        const mid = Number(m.id);
+        const no = String(m.meterNo ?? "").trim();
+        if (Number.isFinite(mid) && !map[mid] && no && byNo[no]) {
+          map[mid] = byNo[no];
+        }
+      }
+      lastAlarmMap.value = map;
+    } catch {
+      lastAlarmMap.value = {};
+    }
+  }
+
+  async function loadAll() {
+    loading.value = true;
+    try {
+      await Promise.all([loadCollectors(), loadMeters(), loadUsageRules()]);
+      await loadRecentAlarms();
+      pagination.total = filteredRows.value.length;
+      pagination.currentPage = 1;
     } finally {
       loading.value = false;
     }
   }
 
   function onSearch() {
-    pagination.total = filteredRules.value.length;
-    if (
-      pagination.currentPage > 1 &&
-      (pagination.currentPage - 1) * pagination.pageSize >= pagination.total
-    ) {
-      pagination.currentPage = 1;
-    }
+    appliedFilter.collectorId = filter.collectorId;
+    appliedFilter.ruleId = filter.ruleId;
+    appliedFilter.meterAddress = filter.meterAddress;
+    appliedFilter.userName = filter.userName;
+    pagination.total = filteredRows.value.length;
+    pagination.currentPage = 1;
   }
 
-  function resetForm(formEl?: { resetFields?: () => void }) {
-    formEl?.resetFields?.();
-    form.ruleName = "";
-    form.enabled = "";
+  function resetFilter() {
+    filter.collectorId = "";
+    filter.ruleId = "";
+    filter.meterAddress = "";
+    filter.userName = "";
     onSearch();
   }
 
   function handleSizeChange(val: number) {
     pagination.pageSize = val;
     pagination.currentPage = 1;
-    onSearch();
   }
 
   function handleCurrentChange(val: number) {
     pagination.currentPage = val;
   }
 
-  function goCreateRule() {
-    router.push({ path: "/alarm/rule-config" });
+  function goMonitor() {
+    activeView.value = "monitor";
   }
 
-  async function toggleEnabled(row: Record<string, any>) {
-    const enabled = row.enabled === false;
+  function goAdd() {
+    activeView.value = "add";
+  }
+
+  function resetAddForm() {
+    addForm.name = "";
+    addForm.deviceType = "electric_meter";
+    addForm.period = "day";
+    addForm.rangeOp = "lt";
+    addForm.thresholdKwh = undefined;
+    addForm.silenceDays = 1;
+    addForm.applyAll = true;
+  }
+
+  async function submitAdd() {
+    const name = addForm.name.trim();
+    if (!name) {
+      message("请填写用量报警设置名称", { type: "warning" });
+      return;
+    }
+    if (
+      addForm.thresholdKwh == null ||
+      !Number.isFinite(Number(addForm.thresholdKwh))
+    ) {
+      message("请填写区间用量（Kwh）", { type: "warning" });
+      return;
+    }
+    const silenceDays = Number(addForm.silenceDays);
+    if (!Number.isFinite(silenceDays) || silenceDays < 0) {
+      message("请填写有效的报警静默期（天）", { type: "warning" });
+      return;
+    }
+
+    if (!addForm.applyAll) {
+      message("指定设备绑定暂未开放，请选择「应用到所有设备」为是", {
+        type: "warning"
+      });
+      return;
+    }
+
+    if (meters.value.length === 0) {
+      message("当前没有可应用的电能表", { type: "warning" });
+      return;
+    }
+
+    // 空 targetIds = 全部电能表（与后端日用量规则评估一致）
     const payload: AlarmRulePayload = {
-      ...alarmRuleRowToSavePayload(row),
-      enabled
+      ruleName: name,
+      targetType: "electric_meter",
+      targetIds: [],
+      alarmType:
+        addForm.rangeOp === "lt"
+          ? "continuous_low_usage"
+          : "continuous_high_usage",
+      alarmLevel: "important",
+      enabled: true,
+      metric: "day_power",
+      compareOp: addForm.rangeOp,
+      threshold: Number(addForm.thresholdKwh),
+      sustainType: "times",
+      sustainValue: 1,
+      silenceMinutes: Math.round(silenceDays * 1440)
     };
+
+    saving.value = true;
     try {
       const res = (await saveAlarmRule(payload)) as Record<string, any>;
       const ok = res?.code === 0 || res?.success === true;
       if (ok) {
-        message(enabled ? "已启用" : "已停用", { type: "success" });
-        await loadRules();
+        message("添加成功", { type: "success" });
+        resetAddForm();
+        activeView.value = "monitor";
+        await loadAll();
       } else {
-        message(String(res?.msg ?? res?.message ?? "操作失败"), {
+        message(String(res?.msg ?? res?.message ?? "添加失败"), {
           type: "warning"
         });
       }
     } catch {
-      message("操作失败", { type: "error" });
+      message("添加失败", { type: "error" });
+    } finally {
+      saving.value = false;
     }
   }
 
-  async function removeRule(row: Record<string, any>) {
+  async function removeUsageSetting(row: { id?: number | string }) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id)) return;
     try {
-      const res = (await deleteAlarmRule({ id: row.id })) as Record<
-        string,
-        any
-      >;
+      await ElMessageBox.confirm(
+        `确认删除用量参数「${(row as any).ruleName ?? id}」？`,
+        "删除确认",
+        { type: "warning" }
+      );
+    } catch {
+      return;
+    }
+    try {
+      const res = (await deleteAlarmRule({ id })) as Record<string, any>;
       const ok = res?.code === 0 || res?.success === true;
       if (ok) {
-        message("删除成功", { type: "success" });
-        await loadRules();
+        message("已删除", { type: "success" });
+        await loadAll();
       } else {
         message(String(res?.msg ?? res?.message ?? "删除失败"), {
           type: "warning"
@@ -219,22 +559,31 @@ export function useAlarmUsageSetting() {
   }
 
   onMounted(() => {
-    loadRules();
+    loadAll();
   });
 
   return {
-    form,
+    activeView,
     loading,
+    saving,
+    filter,
+    addForm,
+    collectorOptions,
+    ruleOptions,
     columns,
     dataList,
     pagination,
+    usageSettingRows,
+    usageSettingColumns,
     onSearch,
-    resetForm,
+    resetFilter,
     handleSizeChange,
     handleCurrentChange,
-    goCreateRule,
-    toggleEnabled,
-    removeRule,
-    loadRules
+    goMonitor,
+    goAdd,
+    submitAdd,
+    resetAddForm,
+    removeUsageSetting,
+    loadAll
   };
 }

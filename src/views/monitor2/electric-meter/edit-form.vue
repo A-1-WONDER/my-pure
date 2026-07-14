@@ -119,18 +119,23 @@ const form = reactive({
 onMounted(() => {
   if (props.data) {
     Object.assign(form, props.data);
+    if (!form.address) {
+      form.address =
+        (props.data as any).installAddress || (props.data as any).address || "";
+    }
+    if (!form.currentReading && (props.data as any).totalPower != null) {
+      form.currentReading = String((props.data as any).totalPower);
+    }
   }
 });
 
 const onSave = () => {
-  if (!form.meterNo || !form.userName) {
-    ElMessage.warning("请填写必填字段");
+  if (!form.meterNo) {
+    ElMessage.warning("请填写电表编号");
     return;
   }
 
-  // 触发保存事件
   emit("save", { ...form });
-  ElMessage.success("保存成功");
 };
 
 const onCancel = () => {

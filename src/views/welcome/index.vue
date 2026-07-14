@@ -5,12 +5,11 @@ import { getWelcomeLoginInfo } from "@/api/user";
 import ReCol from "@/components/ReCol";
 import { useDark } from "./utils";
 import { ReNormalCountTo } from "@/components/ReCountTo";
-import { CollectorStatusPie } from "./components/charts";
+import { CollectorStatusPie, MailNotifyTrend } from "./components/charts";
 import EnergyTrendOverview from "./components/EnergyTrendOverview.vue";
 import { getCollectorList } from "@/api/collector";
 import type { AlarmEvent } from "@/api/types";
-import { getConfig } from "@/config";
-import { getAlarmEventQueryList } from "@/api/alarm";
+import { getAlarmEventQueryList, getAlarmMailNotifyTrend } from "@/api/alarm";
 import { getAlarmTypeLabel } from "@/views/nested/alarm/constants";
 import {
   type EnergyStatsQueryParams,
@@ -29,8 +28,8 @@ const collectorOnlineCount = ref(0);
 const collectorOfflineCount = ref(0);
 const collectorRows = ref<Record<string, unknown>[]>([]);
 
-/** 系统信息（区域与增值服务状态，后续可对接配置接口） */
-const regionName = ref("—");
+/** 系统信息（区域与增值服务状态） */
+const regionName = ref("能耗管理平台");
 const regionAddress = ref("—");
 
 const loginInfoLoading = ref(false);
@@ -95,8 +94,12 @@ const loadLoginInfo = async () => {
 };
 
 const systemServiceRows = [
-  { label: "短信服务", value: "已暂停", inactive: true },
-  { label: "短信剩余条数", value: "0条(已暂停短信通知服务)", inactive: true },
+  { label: "邮件服务", value: "已暂停", inactive: true },
+  {
+    label: "邮件剩余条数",
+    value: "0条(已暂停邮件通知服务)",
+    inactive: true
+  },
   { label: "微信支付服务", value: "未开通", inactive: true },
   { label: "APP下载", value: "未开通", inactive: true },
   { label: "用户缴费公众号", value: "未开通", inactive: true }
@@ -264,13 +267,10 @@ const loadCollectorStats = async () => {
 };
 
 const loadSystemRegionInfo = async () => {
-  try {
-    const config = await getConfig();
-    if (config?.Title) {
-      regionName.value = String(config.Title);
-    }
-  } catch {
-    // 保持默认占位
+  // 系统信息面板区域名称固定展示；区域地址暂无配置时保持 —
+  regionName.value = "能耗管理平台";
+  if (!regionAddress.value) {
+    regionAddress.value = "—";
   }
 };
 
@@ -536,14 +536,51 @@ const collectorOnlineRate = computed(() => {
   return `在线 ${collectorOnlineCount.value} / 离线 ${collectorOfflineCount.value}`;
 });
 
+const mailTrendLoading = ref(false);
+const mailTrendDates = ref<string[]>([]);
+const mailTrendSuccess = ref<number[]>([]);
+const mailTrendFail = ref<number[]>([]);
+
+const loadMailNotifyTrend = async () => {
+  mailTrendLoading.value = true;
+  try {
+    const res = (await getAlarmMailNotifyTrend(7)) as Record<string, any>;
+    const ok = res?.code === 0 || res?.success === true;
+    const data = (res?.data ?? {}) as {
+      dates?: string[];
+      success?: number[];
+      fail?: number[];
+    };
+    if (ok) {
+      mailTrendDates.value = Array.isArray(data.dates) ? data.dates : [];
+      mailTrendSuccess.value = (data.success ?? []).map(n => Number(n) || 0);
+      mailTrendFail.value = (data.fail ?? []).map(n => Number(n) || 0);
+    } else {
+      mailTrendDates.value = [];
+      mailTrendSuccess.value = [];
+      mailTrendFail.value = [];
+    }
+  } catch (e) {
+    console.error("加载邮件通知趋势失败:", e);
+    mailTrendDates.value = [];
+    mailTrendSuccess.value = [];
+    mailTrendFail.value = [];
+  } finally {
+    mailTrendLoading.value = false;
+  }
+};
+
 const onlineChartWrapRef = ref<HTMLElement>();
-const onlineChartHeight = ref(120);
+const mailChartWrapRef = ref<HTMLElement>();
+const topChartHeight = ref(120);
 let onlineChartResizeObserver: ResizeObserver | null = null;
 
 const syncOnlineChartHeight = () => {
-  const height = onlineChartWrapRef.value?.clientHeight ?? 0;
+  const h1 = onlineChartWrapRef.value?.clientHeight ?? 0;
+  const h2 = mailChartWrapRef.value?.clientHeight ?? 0;
+  const height = Math.max(h1, h2);
   if (height > 0) {
-    onlineChartHeight.value = height;
+    topChartHeight.value = height;
   }
 };
 
@@ -556,6 +593,9 @@ const setupOnlineChartResizeObserver = () => {
   if (onlineChartWrapRef.value) {
     onlineChartResizeObserver.observe(onlineChartWrapRef.value);
   }
+  if (mailChartWrapRef.value) {
+    onlineChartResizeObserver.observe(mailChartWrapRef.value);
+  }
   syncOnlineChartHeight();
 };
 
@@ -564,6 +604,7 @@ onMounted(async () => {
   loadSystemRegionInfo();
   loadPowerSummary();
   loadAlarmTimeline();
+  loadMailNotifyTrend();
   loadLoginInfo();
   loginTimeTimer = setInterval(() => {
     loginTimeTick.value++;
@@ -573,7 +614,7 @@ onMounted(async () => {
   setupAlarmLayoutObserver();
 });
 
-watch(collectorLoading, async () => {
+watch([collectorLoading, mailTrendLoading], async () => {
   await nextTick();
   setupOnlineChartResizeObserver();
 });
@@ -625,10 +666,32 @@ onUnmounted(() => {
                 class="welcome-online-chart-wrap mt-1"
               >
                 <CollectorStatusPie
-                  :height="onlineChartHeight"
+                  :height="topChartHeight"
                   :online="collectorOnlineCount"
                   :offline="collectorOfflineCount"
                   :loading="collectorLoading"
+                />
+              </div>
+            </el-card>
+
+            <el-card
+              class="bar-card welcome-card welcome-card--mail welcome-card--top-stretch"
+              shadow="never"
+            >
+              <div class="flex justify-between items-center gap-2">
+                <span class="text-sm font-medium">邮件通知情况</span>
+                <span class="text-xs text-text_color_regular">近7日</span>
+              </div>
+              <div
+                ref="mailChartWrapRef"
+                class="welcome-online-chart-wrap mt-1"
+              >
+                <MailNotifyTrend
+                  :height="topChartHeight"
+                  :dates="mailTrendDates"
+                  :success="mailTrendSuccess"
+                  :fail="mailTrendFail"
+                  :loading="mailTrendLoading"
                 />
               </div>
             </el-card>
@@ -989,6 +1052,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+
+  /* 固定首页占满内容区高度，与改版前一致，避免页面被撑高 */
   height: calc(100vh - 130px);
   margin-top: -8px;
   overflow: hidden;
@@ -1064,7 +1129,8 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.welcome-card--online {
+.welcome-card--online,
+.welcome-card--mail {
   flex: 1;
   min-width: 0;
 
@@ -1080,6 +1146,23 @@ onUnmounted(() => {
   :deep(.el-card__body) {
     padding-top: 6px;
     padding-bottom: 6px;
+  }
+}
+
+@media (width <= 1100px) {
+  .welcome-top-left {
+    flex-wrap: wrap;
+  }
+
+  .welcome-card--online,
+  .welcome-card--mail {
+    flex: 1 1 calc(50% - 8px);
+    min-height: 160px;
+  }
+
+  .welcome-card--count {
+    flex: 1 1 100%;
+    min-height: 72px;
   }
 }
 

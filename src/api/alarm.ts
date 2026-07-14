@@ -121,17 +121,29 @@ export const batchDeleteAlarmEvents = (ids: number[]) => {
   });
 };
 
+export interface AlarmItemToggle {
+  allowAlarm: boolean;
+  emailNotify: boolean;
+}
+
 export interface AlarmSystemSetting {
-  electricAlarmEnabled: boolean;
-  powerOffAlarm: boolean;
-  longOfflineAlarm: boolean;
+  email1?: string;
+  email2?: string;
+  meterAlarms?: Record<string, AlarmItemToggle>;
+  collectorAlarms?: Record<string, AlarmItemToggle>;
+  tempHighThreshold?: number;
+  /** 兼容旧字段 */
+  electricAlarmEnabled?: boolean;
+  powerOffAlarm?: boolean;
+  longOfflineAlarm?: boolean;
 }
 
 /** 查询系统报警设置 */
 export const getAlarmSystemSetting = () => {
   return http.request<Result<AlarmSystemSetting>>(
     "post",
-    "/api/alarm-system-setting-get"
+    "/api/alarm-system-setting-get",
+    { data: {} }
   );
 };
 
@@ -141,5 +153,20 @@ export const saveAlarmSystemSetting = (data: AlarmSystemSetting) => {
     "post",
     "/api/alarm-system-setting-save",
     { data }
+  );
+};
+
+export interface AlarmMailNotifyTrend {
+  dates: string[];
+  success: number[];
+  fail: number[];
+}
+
+/** 首页：近 N 日邮件发送成功/失败 */
+export const getAlarmMailNotifyTrend = (days = 7) => {
+  return http.request<Result<AlarmMailNotifyTrend>>(
+    "post",
+    "/api/alarm-mail-notify-trend",
+    { data: { days } }
   );
 };

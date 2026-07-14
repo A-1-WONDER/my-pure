@@ -292,6 +292,11 @@ interface DialogOptions extends DialogProps {
       closeLoading: Function;
     }
   ) => void;
+  /**
+   * 内容组件事件（如编辑表单 emit 的 save/close）。
+   * 由 ReDialog 透传到 contentRenderer 组件。
+   */
+  on?: Record<string, (...args: any[]) => any>;
 }
 
 export type { EventType, ArgsType, DialogProps, ButtonProps, DialogOptions };

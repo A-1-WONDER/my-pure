@@ -233,11 +233,11 @@ const onlineRate = computed(() => {
 });
 
 const ALARM_GROUP_COLORS: Record<string, string> = {
-  表计类: "#00d4ff",
-  采集器类: "#26ffb3",
-  通信类: "#ffb347",
-  数据类: "#ff5c5c",
-  其他: "#9b59b6"
+  表计类: "#4db8ff",
+  采集器类: "#2dd4a0",
+  通信类: "#f0b429",
+  数据类: "#ff5c75",
+  其他: "#ff9a4d"
 };
 
 const alarmTypeStats = computed(() => {
@@ -310,12 +310,20 @@ const alarmDetailText = (item: AlarmEvent) => {
 };
 
 const techChartTheme = {
-  text: "#ffffff",
-  axis: "rgba(255, 255, 255, 0.55)",
-  split: "rgba(60, 130, 200, 0.22)",
-  cyan: "#00e8ff",
-  green: "#2dffc0",
-  orange: "#ff9f4d"
+  text: "#f8fbff",
+  body: "#e3f0fa",
+  muted: "#b9cfe4",
+  axis: "rgba(185, 207, 228, 0.55)",
+  split: "rgba(77, 184, 255, 0.22)",
+  cyan: "#6ecfff",
+  accent: "#4db8ff",
+  green: "#2dd4a0",
+  orange: "#ff9a4d",
+  warning: "#f0b429",
+  danger: "#ff5c75",
+  offline: "#8aa0b8",
+  tipBg: "rgba(10, 34, 64, 0.92)",
+  tipBorder: "#4db8ff"
 };
 
 const formatKwh = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : "0.00");
@@ -603,8 +611,8 @@ const getRankBadgeStyle = (rank: number, total: number) => {
   const lightness = 32 + ratio * 38;
   const saturation = 92 - ratio * 28;
   return {
-    background: `linear-gradient(135deg, hsl(200 ${saturation}% ${lightness}%), hsl(195 ${saturation - 8}% ${lightness + 14}%))`,
-    boxShadow: `0 0 10px hsl(200 ${saturation}% ${lightness + 8}% / 45%)`
+    background: `linear-gradient(135deg, hsl(205 ${saturation}% ${lightness}%), hsl(200 ${saturation - 8}% ${lightness + 14}%))`,
+    boxShadow: `0 0 10px hsl(205 ${saturation}% ${lightness + 8}% / 45%)`
   };
 };
 
@@ -1087,13 +1095,13 @@ const updateCollectorPieChart = () => {
   collectorPieChart.setOption({
     tooltip: {
       trigger: "item",
-      backgroundColor: "rgba(6, 20, 40, 0.92)",
-      borderColor: techChartTheme.cyan,
-      textStyle: { color: "#fff" }
+      backgroundColor: techChartTheme.tipBg,
+      borderColor: techChartTheme.tipBorder,
+      textStyle: { color: techChartTheme.text }
     },
     legend: {
       bottom: 0,
-      textStyle: { color: techChartTheme.text, fontSize: 11 },
+      textStyle: { color: techChartTheme.body, fontSize: 11 },
       icon: "circle"
     },
     title: {
@@ -1102,7 +1110,7 @@ const updateCollectorPieChart = () => {
       left: "center",
       top: "36%",
       textStyle: { fontSize: 22, fontWeight: 700, color: techChartTheme.cyan },
-      subtextStyle: { fontSize: 11, color: techChartTheme.text }
+      subtextStyle: { fontSize: 11, color: techChartTheme.muted }
     },
     series: [
       {
@@ -1111,10 +1119,10 @@ const updateCollectorPieChart = () => {
         center: ["50%", "40%"],
         label: {
           formatter: "{b}\n{c}",
-          color: techChartTheme.text,
+          color: techChartTheme.body,
           fontSize: 11
         },
-        itemStyle: { borderColor: "#061428", borderWidth: 2 },
+        itemStyle: { borderColor: "#0a2240", borderWidth: 2 },
         data: [
           {
             value: collectorOnlineCount.value,
@@ -1124,7 +1132,7 @@ const updateCollectorPieChart = () => {
           {
             value: collectorOfflineCount.value,
             name: "离线",
-            itemStyle: { color: techChartTheme.orange }
+            itemStyle: { color: techChartTheme.offline }
           }
         ]
       }
@@ -1142,25 +1150,29 @@ const updateEnergyChart = () => {
   energyChart.setOption({
     tooltip: {
       trigger: "axis",
-      backgroundColor: "rgba(6, 20, 40, 0.92)",
-      borderColor: techChartTheme.cyan,
-      textStyle: { color: "#fff" }
+      backgroundColor: techChartTheme.tipBg,
+      borderColor: techChartTheme.tipBorder,
+      textStyle: { color: techChartTheme.text }
     },
     grid: { top: 28, left: 8, right: 8, bottom: 8, containLabel: true },
     xAxis: {
       type: "category",
       data: xData,
-      axisLine: { lineStyle: { color: "rgba(255, 255, 255, 0.75)" } },
-      axisTick: { lineStyle: { color: "rgba(255, 255, 255, 0.45)" } },
-      axisLabel: { color: "#ffffff", fontSize: 11 }
+      axisLine: { lineStyle: { color: techChartTheme.axis } },
+      axisTick: { lineStyle: { color: techChartTheme.axis } },
+      axisLabel: { color: techChartTheme.body, fontSize: 11 }
     },
     yAxis: {
       type: "value",
       name: "用电量",
-      nameTextStyle: { color: "#ffffff", fontSize: 12, padding: [0, 0, 0, 4] },
-      axisLine: { lineStyle: { color: "rgba(255, 255, 255, 0.75)" } },
-      axisTick: { lineStyle: { color: "rgba(255, 255, 255, 0.45)" } },
-      axisLabel: { color: "#ffffff", fontSize: 11 },
+      nameTextStyle: {
+        color: techChartTheme.muted,
+        fontSize: 12,
+        padding: [0, 0, 0, 4]
+      },
+      axisLine: { lineStyle: { color: techChartTheme.axis } },
+      axisTick: { lineStyle: { color: techChartTheme.axis } },
+      axisLabel: { color: techChartTheme.body, fontSize: 11 },
       splitLine: { lineStyle: { color: techChartTheme.split } }
     },
     series: [
@@ -1169,12 +1181,12 @@ const updateEnergyChart = () => {
         smooth: !isBar,
         barMaxWidth: 22,
         data: yData,
-        itemStyle: { color: techChartTheme.cyan },
+        itemStyle: { color: techChartTheme.accent },
         areaStyle: !isBar
           ? {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: "rgba(0, 212, 255, 0.35)" },
-                { offset: 1, color: "rgba(0, 212, 255, 0.02)" }
+                { offset: 0, color: "rgba(77, 184, 255, 0.35)" },
+                { offset: 1, color: "rgba(77, 184, 255, 0.02)" }
               ])
             }
           : undefined
@@ -1192,9 +1204,9 @@ const updateAlarmPieChart = () => {
   alarmPieChart.setOption({
     tooltip: {
       trigger: "item",
-      backgroundColor: "rgba(6, 20, 40, 0.92)",
-      borderColor: techChartTheme.cyan,
-      textStyle: { color: "#fff" },
+      backgroundColor: techChartTheme.tipBg,
+      borderColor: techChartTheme.tipBorder,
+      textStyle: { color: techChartTheme.text },
       formatter: (p: { name: string; value: number; percent: number }) =>
         p.name === "暂无报警"
           ? p.name
@@ -1203,9 +1215,9 @@ const updateAlarmPieChart = () => {
     legend: {
       type: "scroll",
       bottom: 0,
-      textStyle: { color: techChartTheme.text, fontSize: 10 },
+      textStyle: { color: techChartTheme.body, fontSize: 10 },
       icon: "circle",
-      pageTextStyle: { color: techChartTheme.text }
+      pageTextStyle: { color: techChartTheme.muted }
     },
     series: [
       {
@@ -1215,7 +1227,7 @@ const updateAlarmPieChart = () => {
         label: {
           show: data.length <= 4,
           formatter: "{b}\n{c}",
-          color: techChartTheme.text,
+          color: techChartTheme.body,
           fontSize: 10
         },
         labelLine: { length: 8, length2: 6 },
@@ -1225,8 +1237,8 @@ const updateAlarmPieChart = () => {
           itemStyle: {
             color:
               item.name === "暂无报警"
-                ? "rgba(142, 200, 255, 0.25)"
-                : ALARM_GROUP_COLORS[item.name] || techChartTheme.cyan
+                ? "rgba(77, 184, 255, 0.25)"
+                : ALARM_GROUP_COLORS[item.name] || techChartTheme.accent
           }
         }))
       }
@@ -1548,21 +1560,21 @@ onBeforeUnmount(() => {
                 label: '采集器总量',
                 value: collectorCount,
                 unit: '台',
-                color: '#00d4ff',
+                color: '#4db8ff',
                 loading: collectorLoading,
                 narrow: true
               },
               {
                 label: '今日用电量',
                 value: powerToday,
-                color: '#26ffb3',
+                color: '#2dd4a0',
                 loading: powerLoading,
                 decimal: true
               },
               {
                 label: '本月用电量',
                 value: powerThisMonth,
-                color: '#00d4ff',
+                color: '#6ecfff',
                 loading: powerLoading,
                 decimal: true
               },
@@ -1570,7 +1582,7 @@ onBeforeUnmount(() => {
                 label: '在线率',
                 value: onlineRate,
                 unit: '%',
-                color: '#ffb347',
+                color: '#ffb84d',
                 loading: collectorLoading,
                 narrow: true
               }
@@ -1876,14 +1888,14 @@ onBeforeUnmount(() => {
   0%,
   100% {
     text-shadow:
-      0 0 12px rgb(80 160 255 / 70%),
-      0 0 28px rgb(40 100 180 / 42%);
+      0 0 12px rgb(77 184 255 / 70%),
+      0 0 28px rgb(110 207 255 / 40%);
   }
 
   50% {
     text-shadow:
-      0 0 18px rgb(120 200 255 / 90%),
-      0 0 40px rgb(50 120 200 / 55%);
+      0 0 18px rgb(110 207 255 / 90%),
+      0 0 40px rgb(77 184 255 / 55%);
   }
 }
 
@@ -1966,16 +1978,49 @@ onBeforeUnmount(() => {
 }
 
 .data-screen {
-  --ds-bg-top: #020818;
-  --ds-bg-mid: #061428;
-  --ds-bg-bottom: #010408;
-  --ds-accent: #00b8e6;
-  --ds-accent-bright: #00e8ff;
-  --ds-panel-bg: rgb(0 24 48 / 42%);
-  --ds-card-accent: rgb(0 60 100 / 18%);
-  --ds-panel-border: rgb(0 180 255 / 22%);
-  --ds-glow: rgb(0 180 255 / 10%);
-  --ds-card-inner: rgb(0 30 55 / 48%);
+  /* 基础色板 */
+  --ds-bg-deep: #0a2240;
+  --ds-bg-mid: #0e3254;
+  --ds-bg-top: #0e3254;
+  --ds-bg-bottom: #071a32;
+  --ds-accent: #4db8ff;
+  --ds-accent-bright: #6ecfff;
+  --ds-text: #f8fbff;
+  --ds-text-body: #e3f0fa;
+  --ds-text-muted: #b9cfe4;
+  --ds-success: #2dd4a0;
+  --ds-warning: #f0b429;
+  --ds-danger: #ff5c75;
+  --ds-todo: #ff9a4d;
+  --ds-todo-bright: #ffb84d;
+  --ds-offline: #8aa0b8;
+  --ds-panel-bg: rgb(14 50 84 / 55%);
+  --ds-card-accent: rgb(77 184 255 / 12%);
+  --ds-panel-border: var(--tech-edge-dim);
+  --ds-glow: rgb(77 184 255 / 14%);
+  --ds-card-inner: rgb(10 34 64 / 62%);
+
+  /* 基础外框 */
+  --frame-w: 1px;
+  --frame-color: #4db8ff;
+  --tech-edge: rgb(77 184 255 / 50%);
+  --tech-edge-dim: rgb(77 184 255 / 22%);
+  --glass-edge: rgb(77 184 255 / 36%);
+
+  /* 发光 / 顶光 */
+  --tech-frame-glow: 0 0 18px rgb(77 184 255 / 10%);
+  --tech-line-glow: 0 0 8px rgb(77 184 255 / 42%);
+
+  /* 四角 bracket */
+  --frame-corner-size: 18px;
+  --frame-corner-w: 3px;
+
+  /* 面板顶光分色 */
+  --flow-color-ingest: #4db8ff;
+  --flow-color-analyze: #6ecfff;
+  --flow-color-alert: #ffb84d;
+  --flow-color-output: #2dd4a0;
+  --flow-color: var(--flow-color-ingest);
 
   position: fixed;
   inset: 0;
@@ -1984,12 +2029,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #fff;
+  color: var(--ds-text);
   background: linear-gradient(
     168deg,
-    var(--ds-bg-top) 0%,
-    var(--ds-bg-mid) 42%,
-    #05172a 68%,
+    var(--ds-bg-mid) 0%,
+    var(--ds-bg-deep) 42%,
+    #0c2a48 68%,
     var(--ds-bg-bottom) 100%
   );
 }
@@ -2002,11 +2047,11 @@ onBeforeUnmount(() => {
 }
 
 .font-digital--value {
-  color: #00e8ff;
+  color: var(--ds-accent-bright);
   text-shadow:
-    0 0 4px rgb(0 232 255 / 95%),
-    0 0 12px rgb(0 180 255 / 65%),
-    0 0 24px rgb(0 100 255 / 35%);
+    0 0 4px rgb(110 207 255 / 95%),
+    0 0 12px rgb(77 184 255 / 65%),
+    0 0 24px rgb(77 184 255 / 35%);
 }
 
 .data-screen__bg {
@@ -2021,17 +2066,17 @@ onBeforeUnmount(() => {
   background:
     radial-gradient(
       ellipse 90% 55% at 50% -8%,
-      rgb(0 140 220 / 14%) 0%,
+      rgb(77 184 255 / 16%) 0%,
       transparent 58%
     ),
     radial-gradient(
       ellipse 70% 50% at 12% 88%,
-      rgb(0 80 160 / 10%) 0%,
+      rgb(14 50 84 / 55%) 0%,
       transparent 55%
     ),
     radial-gradient(
       ellipse 60% 45% at 88% 78%,
-      rgb(0 100 180 / 8%) 0%,
+      rgb(110 207 255 / 10%) 0%,
       transparent 50%
     );
 }
@@ -2040,8 +2085,8 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgb(0 180 255 / 6%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(0 180 255 / 6%) 1px, transparent 1px);
+    linear-gradient(rgb(77 184 255 / 7%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(77 184 255 / 7%) 1px, transparent 1px);
   background-size: 40px 40px;
   opacity: 0.75;
   mask-image: radial-gradient(
@@ -2073,14 +2118,14 @@ onBeforeUnmount(() => {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgb(0 120 200 / 35%) 20%,
-    rgb(0 200 255 / 55%) 50%,
-    rgb(0 120 200 / 35%) 80%,
+    rgb(77 184 255 / 35%) 20%,
+    rgb(110 207 255 / 55%) 50%,
+    rgb(77 184 255 / 35%) 80%,
     transparent 100%
   );
   box-shadow:
-    0 0 20px rgb(0 140 220 / 28%),
-    0 -40px 80px rgb(0 40 80 / 18%);
+    0 0 20px rgb(77 184 255 / 28%),
+    0 -40px 80px rgb(10 34 64 / 35%);
   opacity: 0.55;
 }
 
@@ -2096,7 +2141,7 @@ onBeforeUnmount(() => {
     left: -4%;
     width: 480px;
     height: 480px;
-    background: #0a3558;
+    background: #0e3254;
   }
 
   &--right {
@@ -2104,7 +2149,7 @@ onBeforeUnmount(() => {
     bottom: 6%;
     width: 440px;
     height: 440px;
-    background: #062a45;
+    background: #0a2240;
     animation-delay: -5s;
   }
 
@@ -2113,7 +2158,7 @@ onBeforeUnmount(() => {
     left: 50%;
     width: 360px;
     height: 280px;
-    background: rgb(0 100 180 / 35%);
+    background: rgb(77 184 255 / 28%);
     opacity: 0.22;
     transform: translateX(-50%);
     animation: float-center 12s ease-in-out infinite;
@@ -2126,7 +2171,7 @@ onBeforeUnmount(() => {
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgb(255 255 255 / 4%) 50%,
+    rgb(248 251 255 / 4%) 50%,
     transparent 100%
   );
   background-size: 100% 5px;
@@ -2138,38 +2183,40 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 10px 12px;
   pointer-events: none;
+  border: var(--frame-w) solid var(--tech-edge);
+  box-shadow: var(--tech-frame-glow);
 }
 
 .data-screen__frame-corner {
   position: absolute;
-  width: 28px;
-  height: 28px;
-  border-color: rgb(0 180 255 / 45%);
+  width: var(--frame-corner-size);
+  height: var(--frame-corner-size);
+  border-color: var(--frame-color);
   border-style: solid;
-  box-shadow: 0 0 12px rgb(0 140 220 / 28%);
+  box-shadow: var(--tech-line-glow);
 
   &--tl {
-    top: 0;
-    left: 0;
-    border-width: 2px 0 0 2px;
+    top: -1px;
+    left: -1px;
+    border-width: var(--frame-corner-w) 0 0 var(--frame-corner-w);
   }
 
   &--tr {
-    top: 0;
-    right: 0;
-    border-width: 2px 2px 0 0;
+    top: -1px;
+    right: -1px;
+    border-width: var(--frame-corner-w) var(--frame-corner-w) 0 0;
   }
 
   &--bl {
-    bottom: 0;
-    left: 0;
-    border-width: 0 0 2px 2px;
+    bottom: -1px;
+    left: -1px;
+    border-width: 0 0 var(--frame-corner-w) var(--frame-corner-w);
   }
 
   &--br {
-    right: 0;
-    bottom: 0;
-    border-width: 0 2px 2px 0;
+    right: -1px;
+    bottom: -1px;
+    border-width: 0 var(--frame-corner-w) var(--frame-corner-w) 0;
   }
 }
 
@@ -2185,13 +2232,14 @@ onBeforeUnmount(() => {
   padding: 10px 20px 12px;
   background: linear-gradient(
     180deg,
-    rgb(0 20 40 / 55%) 0%,
-    rgb(0 10 25 / 22%) 100%
+    rgb(14 50 84 / 70%) 0%,
+    rgb(10 34 64 / 30%) 100%
   );
-  border-bottom: 1px solid rgb(0 180 255 / 22%);
+  border-bottom: var(--frame-w) solid var(--tech-edge);
   box-shadow:
     0 4px 24px rgb(0 0 0 / 35%),
-    inset 0 1px 0 rgb(0 180 255 / 12%);
+    inset 0 1px 0 rgb(110 207 255 / 14%),
+    var(--tech-frame-glow);
   backdrop-filter: blur(10px);
 }
 
@@ -2219,12 +2267,12 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 6px 14px;
   font-size: 0.85rem;
-  color: #fff;
+  color: var(--ds-text);
   cursor: pointer;
-  background: rgb(0 40 70 / 35%);
-  border: 1px solid rgb(0 180 255 / 28%);
+  background: rgb(14 50 84 / 55%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 4px;
-  box-shadow: inset 0 1px 0 rgb(0 180 255 / 10%);
+  box-shadow: inset 0 1px 0 rgb(110 207 255 / 12%);
   backdrop-filter: blur(6px);
   transition:
     color 0.2s,
@@ -2232,10 +2280,10 @@ onBeforeUnmount(() => {
     background 0.2s;
 
   &:hover {
-    color: #fff;
-    background: rgb(0 80 140 / 38%);
-    border-color: rgb(0 200 255 / 55%);
-    box-shadow: 0 0 16px rgb(0 140 220 / 28%);
+    color: var(--ds-text);
+    background: rgb(77 184 255 / 22%);
+    border-color: rgb(110 207 255 / 60%);
+    box-shadow: 0 0 16px rgb(77 184 255 / 30%);
   }
 
   svg {
@@ -2245,13 +2293,13 @@ onBeforeUnmount(() => {
 }
 
 .data-screen__exit {
-  color: #ffb4b4;
-  border-color: rgb(255 92 92 / 35%);
+  color: #ffb0ba;
+  border-color: rgb(255 92 117 / 40%);
 
   &:hover {
-    color: #fff;
-    background: rgb(120 30 30 / 45%);
-    border-color: rgb(255 92 92 / 55%);
+    color: var(--ds-text);
+    background: rgb(255 92 117 / 28%);
+    border-color: rgb(255 92 117 / 60%);
   }
 }
 
@@ -2271,12 +2319,12 @@ onBeforeUnmount(() => {
   font-size: clamp(1.15rem, 1.5vw + 0.9rem, 1.5rem);
   font-weight: 700;
   line-height: 1.25;
-  color: #fff;
+  color: var(--ds-text);
   letter-spacing: 0.22em;
   white-space: nowrap;
   text-shadow:
-    0 0 12px rgb(80 160 255 / 70%),
-    0 0 28px rgb(40 100 180 / 42%);
+    0 0 12px rgb(77 184 255 / 70%),
+    0 0 28px rgb(110 207 255 / 40%);
   animation: title-glow 3s ease-in-out infinite;
 }
 
@@ -2296,10 +2344,10 @@ onBeforeUnmount(() => {
   flex: 1;
   max-width: 120px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgb(80 160 230 / 85%));
+  background: linear-gradient(90deg, transparent, rgb(77 184 255 / 85%));
 
   &--mirror {
-    background: linear-gradient(90deg, rgb(80 160 230 / 85%), transparent);
+    background: linear-gradient(90deg, rgb(77 184 255 / 85%), transparent);
   }
 }
 
@@ -2307,10 +2355,10 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
-  background: #d8e8f2;
+  background: #6ecfff;
   box-shadow:
-    0 0 10px rgb(255 255 255 / 85%),
-    0 0 18px rgb(150 180 200 / 65%);
+    0 0 10px rgb(110 207 255 / 90%),
+    0 0 18px rgb(77 184 255 / 65%);
   transform: rotate(45deg);
   animation: title-node-pulse 2.4s ease-in-out infinite;
 }
@@ -2327,15 +2375,15 @@ onBeforeUnmount(() => {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgb(150 175 195 / 28%) 40%,
-    rgb(190 215 230 / 72%) 100%
+    rgb(77 184 255 / 30%) 40%,
+    rgb(110 207 255 / 75%) 100%
   );
 
   &--right {
     background: linear-gradient(
       90deg,
-      rgb(190 215 230 / 72%) 0%,
-      rgb(150 175 195 / 28%) 60%,
+      rgb(110 207 255 / 75%) 0%,
+      rgb(77 184 255 / 30%) 60%,
       transparent 100%
     );
   }
@@ -2354,10 +2402,10 @@ onBeforeUnmount(() => {
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 6px solid rgb(170 195 215 / 82%);
+  border-left: 6px solid rgb(77 184 255 / 85%);
 
   &--mirror {
-    border-right: 6px solid rgb(170 195 215 / 82%);
+    border-right: 6px solid rgb(77 184 255 / 85%);
     border-left: none;
   }
 }
@@ -2367,11 +2415,11 @@ onBeforeUnmount(() => {
   height: 2px;
   background: linear-gradient(
     90deg,
-    rgb(100 125 145 / 35%),
-    #a8c8dc,
-    rgb(100 125 145 / 35%)
+    rgb(14 50 84 / 35%),
+    #4db8ff,
+    rgb(14 50 84 / 35%)
   );
-  box-shadow: 0 0 10px rgb(150 175 195 / 50%);
+  box-shadow: 0 0 10px rgb(77 184 255 / 50%);
 
   &--short {
     width: 36px;
@@ -2383,9 +2431,9 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  background: #c5dae8;
+  background: #6ecfff;
   border-radius: 50%;
-  box-shadow: 0 0 10px rgb(180 210 230 / 85%);
+  box-shadow: 0 0 10px rgb(110 207 255 / 85%);
   animation: title-node-pulse 2.4s ease-in-out infinite;
 }
 
@@ -2395,12 +2443,12 @@ onBeforeUnmount(() => {
   gap: 4px;
   align-items: flex-start;
   padding: 8px 14px;
-  background: rgb(255 255 255 / 8%);
-  border: 1px solid rgb(80 160 230 / 35%);
+  background: rgb(14 50 84 / 45%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 6px;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 12%),
-    0 0 20px rgb(30 90 160 / 18%);
+    inset 0 1px 0 rgb(110 207 255 / 12%),
+    0 0 20px rgb(77 184 255 / 18%);
   backdrop-filter: blur(8px);
 }
 
@@ -2447,9 +2495,23 @@ onBeforeUnmount(() => {
   gap: 12px;
   min-width: 0;
   min-height: 0;
+
+  &--left {
+    --flow-color: var(--flow-color-ingest);
+  }
+
+  &--center {
+    --flow-color: var(--flow-color-analyze);
+  }
+
+  &--right {
+    --flow-color: var(--flow-color-alert);
+  }
 }
 
 .data-panel {
+  --panel-accent: var(--flow-color);
+
   position: relative;
   z-index: 0;
   display: flex;
@@ -2462,28 +2524,29 @@ onBeforeUnmount(() => {
     var(--ds-panel-bg) 0%,
     var(--ds-card-accent) 100%
   );
-  border: 1px solid var(--ds-panel-border);
+  border: var(--frame-w) solid var(--tech-edge);
   border-radius: 4px;
   box-shadow:
-    inset 0 1px 0 rgb(0 180 255 / 8%),
-    0 4px 20px rgb(0 0 0 / 32%);
+    inset 0 1px 0 color-mix(in srgb, var(--flow-color) 18%, transparent),
+    0 4px 20px rgb(0 0 0 / 32%),
+    var(--tech-frame-glow);
   animation: panel-in 0.7s ease both;
   animation-delay: var(--delay, 0s);
 
   &::before {
     position: absolute;
     top: 0;
-    right: 12%;
-    left: 12%;
-    height: 1px;
+    right: 8%;
+    left: 8%;
+    height: 2px;
     content: "";
     background: linear-gradient(
       90deg,
       transparent,
-      rgb(100 180 255 / 65%),
+      var(--flow-color),
       transparent
     );
-    box-shadow: 0 0 12px rgb(50 140 220 / 45%);
+    box-shadow: var(--tech-line-glow);
   }
 
   &--grow {
@@ -2492,6 +2555,8 @@ onBeforeUnmount(() => {
   }
 
   &--water {
+    --flow-color: var(--flow-color-output);
+
     flex-shrink: 0;
     height: 140px;
   }
@@ -2499,34 +2564,36 @@ onBeforeUnmount(() => {
 
 .data-panel__corner {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  border-color: var(--panel-accent, #a8c8dc);
+  width: var(--frame-corner-size);
+  height: var(--frame-corner-size);
+  border-color: var(--flow-color);
   border-style: solid;
-  filter: drop-shadow(0 0 4px var(--panel-accent, #a8c8dc));
+  filter: drop-shadow(
+    0 0 6px color-mix(in srgb, var(--flow-color) 55%, transparent)
+  );
 
   &--tl {
     top: -1px;
     left: -1px;
-    border-width: 2px 0 0 2px;
+    border-width: var(--frame-corner-w) 0 0 var(--frame-corner-w);
   }
 
   &--tr {
     top: -1px;
     right: -1px;
-    border-width: 2px 2px 0 0;
+    border-width: var(--frame-corner-w) var(--frame-corner-w) 0 0;
   }
 
   &--bl {
     bottom: -1px;
     left: -1px;
-    border-width: 0 0 2px 2px;
+    border-width: 0 0 var(--frame-corner-w) var(--frame-corner-w);
   }
 
   &--br {
     right: -1px;
     bottom: -1px;
-    border-width: 0 2px 2px 0;
+    border-width: 0 var(--frame-corner-w) var(--frame-corner-w) 0;
   }
 }
 
@@ -2567,29 +2634,31 @@ onBeforeUnmount(() => {
   height: 32px;
   background: radial-gradient(
     circle at 50% 50%,
-    rgb(80 160 230 / 18%) 0%,
+    color-mix(in srgb, var(--flow-color) 22%, transparent) 0%,
     transparent 72%
   );
-  border: 1px solid rgb(80 160 230 / 38%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 8px;
   box-shadow:
-    0 0 20px rgb(140 170 190 / 32%),
-    inset 0 0 12px rgb(160 190 210 / 15%);
+    0 0 20px color-mix(in srgb, var(--flow-color) 28%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--flow-color) 12%, transparent);
 }
 
 .data-panel__head-deco-icon {
   width: 20px;
   height: 20px;
-  color: rgb(190 215 230 / 70%);
-  filter: drop-shadow(0 0 6px rgb(150 175 195 / 45%));
+  color: var(--flow-color);
+  filter: drop-shadow(
+    0 0 6px color-mix(in srgb, var(--flow-color) 45%, transparent)
+  );
 }
 
 .data-panel__head-title {
   font-size: 14px;
   font-weight: 600;
-  color: #fff;
+  color: var(--ds-text);
   letter-spacing: 0.12em;
-  text-shadow: 0 0 10px rgb(140 170 190 / 35%);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--flow-color) 35%, transparent);
 }
 
 .data-panel__head-wave {
@@ -2607,11 +2676,11 @@ onBeforeUnmount(() => {
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgb(170 200 220 / 80%) 35%,
-      rgb(190 215 230 / 65%) 65%,
+      color-mix(in srgb, var(--flow-color) 80%, transparent) 35%,
+      color-mix(in srgb, var(--flow-color) 65%, transparent) 65%,
       transparent 100%
     );
-    box-shadow: 0 0 8px rgb(150 175 195 / 45%);
+    box-shadow: var(--tech-line-glow);
   }
 
   &::after {
@@ -2621,7 +2690,7 @@ onBeforeUnmount(() => {
     width: 200%;
     height: 8px;
     content: "";
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath fill='none' stroke='rgba(0,212,255,0.45)' stroke-width='1' d='M0 4 Q15 0 30 4 T60 4 T90 4 T120 4'/%3E%3C/svg%3E")
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath fill='none' stroke='rgba(77,184,255,0.45)' stroke-width='1' d='M0 4 Q15 0 30 4 T60 4 T90 4 T120 4'/%3E%3C/svg%3E")
       repeat-x;
     background-size: 60px 8px;
     opacity: 0.9;
@@ -2643,23 +2712,23 @@ onBeforeUnmount(() => {
   padding: 10px 6px;
   text-align: center;
   background: var(--ds-card-inner);
-  border: 1px solid rgb(80 160 230 / 32%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 6px;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  box-shadow: inset 0 1px 0 rgb(248 251 255 / 8%);
 
   :deep(.count-to) {
-    color: #00d4ff;
-    text-shadow: 0 0 8px rgb(0 212 255 / 45%);
+    color: #4db8ff;
+    text-shadow: 0 0 8px rgb(77 184 255 / 45%);
   }
 
   &:nth-child(2) :deep(.count-to) {
-    color: #26ffb3;
-    text-shadow: 0 0 8px rgb(38 255 179 / 40%);
+    color: #2dd4a0;
+    text-shadow: 0 0 8px rgb(45 212 160 / 40%);
   }
 
   &:nth-child(3) :deep(.count-to) {
-    color: #ffb347;
-    text-shadow: 0 0 8px rgb(255 179 71 / 40%);
+    color: #ffb84d;
+    text-shadow: 0 0 8px rgb(255 184 77 / 40%);
   }
 }
 
@@ -2670,21 +2739,21 @@ onBeforeUnmount(() => {
   width: 40px;
   height: 40px;
   font-size: 22px;
-  color: #00d4ff;
-  background: rgb(0 212 255 / 6%);
+  color: #4db8ff;
+  background: rgb(77 184 255 / 6%);
   border-radius: 50%;
-  box-shadow: 0 0 12px rgb(0 212 255 / 20%);
+  box-shadow: 0 0 12px rgb(77 184 255 / 20%);
 
   &--elec {
-    color: #26ffb3;
-    background: rgb(38 255 179 / 6%);
-    box-shadow: 0 0 12px rgb(38 255 179 / 20%);
+    color: #2dd4a0;
+    background: rgb(45 212 160 / 6%);
+    box-shadow: 0 0 12px rgb(45 212 160 / 20%);
   }
 
   &--user {
-    color: #ffb347;
-    background: rgb(255 179 71 / 6%);
-    box-shadow: 0 0 12px rgb(255 179 71 / 20%);
+    color: #ffb84d;
+    background: rgb(255 184 77 / 6%);
+    box-shadow: 0 0 12px rgb(255 184 77 / 20%);
   }
 }
 
@@ -2723,7 +2792,7 @@ onBeforeUnmount(() => {
   width: 118px;
   padding: 4px 8px;
   background: transparent;
-  border-left: 1px solid rgb(80 160 230 / 28%);
+  border-left: var(--frame-w) solid var(--tech-edge-dim);
   border-radius: 0 4px 4px 0;
 }
 
@@ -2771,17 +2840,17 @@ onBeforeUnmount(() => {
   }
 
   &.is-up {
-    color: #5dffb8;
+    color: #2dd4a0;
     text-shadow:
-      0 0 6px rgb(38 255 179 / 80%),
-      0 0 14px rgb(38 255 179 / 40%);
+      0 0 6px rgb(45 212 160 / 80%),
+      0 0 14px rgb(45 212 160 / 40%);
   }
 
   &.is-down {
-    color: #ffb07a;
+    color: #ff9a4d;
     text-shadow:
-      0 0 6px rgb(255 140 66 / 75%),
-      0 0 14px rgb(255 140 66 / 35%);
+      0 0 6px rgb(255 154 77 / 75%),
+      0 0 14px rgb(255 154 77 / 35%);
   }
 }
 
@@ -2800,7 +2869,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   padding: 4px 8px;
-  border-left: 1px solid rgb(170 195 215 / 28%);
+  border-left: var(--frame-w) solid var(--tech-edge-dim);
 
   &--cards {
     width: min(188px, 28%);
@@ -2830,7 +2899,7 @@ onBeforeUnmount(() => {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgb(140 170 190 / 38%);
+    background: rgb(138 160 184 / 38%);
     border-radius: 2px;
   }
 }
@@ -2842,7 +2911,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 8px 10px;
   background: var(--ds-card-inner);
-  border: 1px solid rgb(80 160 230 / 30%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 6px;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
   transition:
@@ -2850,8 +2919,8 @@ onBeforeUnmount(() => {
     box-shadow 0.2s;
 
   &:hover {
-    border-color: rgb(190 215 230 / 55%);
-    box-shadow: 0 0 16px rgb(140 170 190 / 22%);
+    border-color: rgb(185 207 228 / 55%);
+    box-shadow: 0 0 16px rgb(138 160 184 / 22%);
   }
 }
 
@@ -2888,7 +2957,7 @@ onBeforeUnmount(() => {
 .energy-rank-card__value {
   font-size: 11px;
   font-weight: 600;
-  color: #26ffb3;
+  color: #2dd4a0;
 }
 
 .data-panel__scroll-wrap {
@@ -2924,7 +2993,7 @@ onBeforeUnmount(() => {
   td {
     padding: 5px 6px;
     text-align: left;
-    border-bottom: 1px dashed rgb(170 195 215 / 22%);
+    border-bottom: var(--frame-w) dashed var(--tech-edge-dim);
   }
 
   th {
@@ -2949,11 +3018,11 @@ onBeforeUnmount(() => {
 }
 
 .tag--on {
-  color: #26ffb3;
+  color: #2dd4a0;
 }
 
 .tag--off {
-  color: #ff8c42;
+  color: #ff9a4d;
 }
 
 .data-panel__empty {
@@ -2974,7 +3043,8 @@ onBeforeUnmount(() => {
 }
 
 .data-panel--kpi {
-  --panel-accent: #5eb8ff;
+  /* KPI 仍可用行内 --panel-accent 覆盖；未设置时走中列亮青 */
+  --flow-color: var(--panel-accent, var(--flow-color-analyze));
 
   min-height: 88px;
   background: linear-gradient(
@@ -2982,9 +3052,11 @@ onBeforeUnmount(() => {
     var(--ds-panel-bg) 0%,
     var(--ds-card-accent) 100%
   );
+  border-color: var(--glass-edge);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 12%),
-    0 4px 20px rgb(8 30 60 / 22%);
+    inset 0 1px 0 rgb(110 207 255 / 12%),
+    0 4px 20px rgb(10 34 64 / 35%),
+    var(--tech-frame-glow);
 }
 
 .data-panel--kpi-narrow {
@@ -2998,7 +3070,7 @@ onBeforeUnmount(() => {
 .data-panel__label {
   margin: 0 0 6px;
   font-size: 12px;
-  color: #fff;
+  color: var(--ds-text-muted);
 }
 
 .data-panel__value {
@@ -3010,12 +3082,12 @@ onBeforeUnmount(() => {
 .data-panel__number {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--panel-accent, #00d4ff);
+  color: var(--panel-accent, #4db8ff);
 }
 
 .data-panel__unit {
   font-size: 12px;
-  color: #fff;
+  color: var(--ds-text-body);
 }
 
 .dimension-tabs {
@@ -3026,19 +3098,19 @@ onBeforeUnmount(() => {
 .dimension-tabs__btn {
   padding: 3px 12px;
   font-size: 12px;
-  color: rgb(255 255 255 / 82%);
+  color: var(--ds-text-body);
   cursor: pointer;
   background: transparent;
-  border: 1px solid rgb(170 195 215 / 32%);
+  border: var(--frame-w) solid var(--glass-edge);
   border-radius: 3px;
   transition: all 0.2s;
 
   &.is-active,
   &:hover {
-    color: #fff;
-    background: rgb(140 170 190 / 32%);
-    border-color: #b8d4e8;
-    box-shadow: 0 0 14px rgb(120 150 170 / 32%);
+    color: var(--ds-text);
+    background: rgb(77 184 255 / 22%);
+    border-color: #6ecfff;
+    box-shadow: 0 0 14px rgb(77 184 255 / 32%);
   }
 }
 
@@ -3054,7 +3126,7 @@ onBeforeUnmount(() => {
 
   .placeholder-icon {
     font-size: 28px;
-    color: rgb(150 175 195 / 45%);
+    color: rgb(185 207 228 / 45%);
   }
 
   p {

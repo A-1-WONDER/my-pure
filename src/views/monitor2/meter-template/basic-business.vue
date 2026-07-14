@@ -5,7 +5,7 @@
     </div>
 
     <div class="content p-4">
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" class="biz-tabs">
         <el-tab-pane label="基本信息" name="basic">
           <div class="grid grid-cols-2 gap-4">
             <div class="p-3 border rounded">
@@ -146,7 +146,7 @@
         </el-tab-pane>
 
         <el-tab-pane label="告警记录" name="alarms" lazy>
-          <div class="p-4">
+          <div class="tab-pane-body">
             <el-empty
               v-if="alarmData.length === 0"
               description="暂无告警记录"
@@ -157,6 +157,7 @@
               v-loading="alarmLoading"
               :data="alarmData"
               style="width: 100%"
+              :max-height="alarmTableMaxHeight"
             >
               <el-table-column prop="time" label="时间" width="180" />
               <el-table-column prop="type" label="告警类型" width="140">
@@ -174,7 +175,11 @@
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="description" label="描述" />
+              <el-table-column
+                prop="description"
+                label="描述"
+                min-width="160"
+              />
               <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
                   <el-tag
@@ -189,7 +194,7 @@
         </el-tab-pane>
 
         <el-tab-pane label="操作记录" name="operations" lazy>
-          <div class="p-4">
+          <div class="tab-pane-body tab-pane-body--scroll">
             <el-empty
               v-if="!operationLoading && operationActivities.length === 0"
               description="暂无操作记录"
@@ -247,6 +252,12 @@ const props = defineProps({
     type: Object,
     required: true
   }
+});
+
+/** 告警表体内滚动高度：适配弹窗，避免整页撑破 */
+const alarmTableMaxHeight = computed(() => {
+  if (typeof window === "undefined") return 360;
+  return Math.max(220, Math.min(420, Math.floor(window.innerHeight * 0.45)));
 });
 
 const emit = defineEmits(["refresh", "close"]);
@@ -738,7 +749,53 @@ const onClose = () => {
 
 <style scoped>
 .meter-basic-business {
-  width: 800px;
-  max-height: 700px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  max-height: min(700px, 80vh);
+  overflow: hidden;
+}
+
+.header,
+.footer {
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.biz-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.biz-tabs :deep(.el-tabs__header) {
+  flex-shrink: 0;
+}
+
+.biz-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.biz-tabs :deep(.el-tab-pane) {
+  height: 100%;
+}
+
+.tab-pane-body {
+  box-sizing: border-box;
+  padding: 8px 4px 4px;
+}
+
+.tab-pane-body--scroll {
+  max-height: min(420px, 45vh);
+  overflow: auto;
 }
 </style>

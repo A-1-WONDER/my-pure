@@ -7,7 +7,8 @@ import { PureTableBar } from "@/components/RePureTableBar";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 
 import Delete from "~icons/ep/delete";
-import Edit from "~icons/ep/edit";
+import CircleClose from "~icons/ep/circle-close";
+import View from "~icons/ep/view";
 import Refresh from "~icons/ep/refresh";
 
 defineOptions({
@@ -25,8 +26,9 @@ const {
   pagination,
   selectedNum,
   onSearch,
-  onEdit,
   onBiz,
+  onCloseAlarm,
+  onDelete,
   clearAll,
   resetForm,
   onbatchDel,
@@ -52,7 +54,7 @@ const alarmGroupLabels: Record<AlarmTypeGroupKey, string> = {
 </script>
 
 <template>
-  <div class="main">
+  <div class="main alarm-event-query">
     <el-form
       ref="formRef"
       :inline="true"
@@ -93,16 +95,14 @@ const alarmGroupLabels: Record<AlarmTypeGroupKey, string> = {
           <el-option label="紧急" value="urgent" />
         </el-select>
       </el-form-item>
-      <el-form-item label="报警状态" prop="alarmStatus">
+      <el-form-item label="状态" prop="alarmStatus">
         <el-select
           v-model="form.alarmStatus"
-          placeholder="请选择报警状态"
+          placeholder="请选择状态"
           clearable
           class="w-[170px]!"
         >
-          <el-option label="未处理" value="pending" />
-          <el-option label="处理中" value="processing" />
-          <el-option label="已处理" value="resolved" />
+          <el-option label="已触发" value="pending" />
           <el-option label="已关闭" value="closed" />
         </el-select>
       </el-form-item>
@@ -217,21 +217,38 @@ const alarmGroupLabels: Record<AlarmTypeGroupKey, string> = {
               link
               type="primary"
               :size="size"
-              :icon="useRenderIcon(Edit)"
-              @click="onEdit(row)"
-            >
-              处理
-            </el-button>
-            <el-button
-              class="reset-margin outline-hidden! ml-2"
-              link
-              type="primary"
-              :size="size"
-              :icon="useRenderIcon(Edit)"
+              :icon="useRenderIcon(View)"
               @click="onBiz(row)"
             >
               详情
             </el-button>
+            <el-button
+              class="reset-margin outline-hidden! ml-1"
+              link
+              type="warning"
+              :size="size"
+              :icon="useRenderIcon(CircleClose)"
+              :disabled="Number(row.alarmStatus) === 2"
+              @click="onCloseAlarm(row)"
+            >
+              关闭报警
+            </el-button>
+            <el-popconfirm
+              title="确定删除该报警事件？"
+              @confirm="onDelete(row)"
+            >
+              <template #reference>
+                <el-button
+                  class="reset-margin outline-hidden! ml-1"
+                  link
+                  type="danger"
+                  :size="size"
+                  :icon="useRenderIcon(Delete)"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </pure-table>
       </template>
@@ -239,13 +256,16 @@ const alarmGroupLabels: Record<AlarmTypeGroupKey, string> = {
   </div>
 </template>
 
+<style lang="scss">
+/* class 挂在页面根上（与布局注入的 main-content 同一节点） */
+.main-content.alarm-event-query {
+  margin: 24px 24px 0 !important;
+}
+</style>
+
 <style lang="scss" scoped>
 :deep(.el-dropdown-menu__item i) {
   margin: 0;
-}
-
-.main-content {
-  margin: 24px 24px 0 !important;
 }
 
 .search-form {

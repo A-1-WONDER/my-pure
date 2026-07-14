@@ -1,20 +1,24 @@
 import dayjs from "dayjs";
+import { h, type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import EditForm from "./edit-form.vue";
-import BasicBusiness from "./basic-business.vue";
-import Open1Dialog from "./open1-dialog.vue";
+import BasicBusiness from "../meter-template/basic-business.vue";
 import { message } from "@/utils/message";
-import { addDialog } from "@/components/ReDialog";
+import { addDialog, closeDialog } from "@/components/ReDialog";
 import type { PaginationProps } from "@pureadmin/table";
-import { type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import { getKeyList } from "@pureadmin/utils";
 import {
   getMeterList,
   deleteMeters,
   batchUpdateMeterStatus,
   getElectricMeterDetails,
-  simpleMeterApi
+  simpleMeterApi,
+  updateMeter,
+  updateMeterReading
 } from "@/api/meters";
+import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
+
+const electricMeterConfig = getMeterTypeConfig("electric");
 
 export function useElectricMeter(tableRef: Ref) {
   const allowDemoFallback = !import.meta.env.PROD;
@@ -446,29 +450,92 @@ export function useElectricMeter(tableRef: Ref) {
     onSearch();
   }
 
+  function buildMeterUpdatePayload(
+    row: Record<string, any>,
+    saveData: Record<string, any>
+  ) {
+    const statusRaw = saveData.status ?? row.status;
+    const statusNum =
+      statusRaw === "" || statusRaw === null || statusRaw === undefined
+        ? row.status
+        : Number(statusRaw);
+    return {
+      id: row.id,
+      meterId: row.meterId ?? row.id,
+      meterNo: saveData.meterNo ?? row.meterNo,
+      meterType: row.meterType || "electric",
+      installAddress:
+        saveData.address ?? row.installAddress ?? row.address ?? "",
+      meterAddress: row.meterAddress,
+      remark: saveData.remark ?? row.remark,
+      status: Number.isFinite(statusNum) ? statusNum : row.status,
+      installTime: saveData.installTime || row.installTime,
+      collectorId: row.collectorId,
+      userId: row.userId,
+      enabled: row.enabled,
+      totalPower:
+        saveData.currentReading === "" || saveData.currentReading == null
+          ? row.totalPower
+          : Number(saveData.currentReading)
+    };
+  }
+
   function onEdit(row) {
     addDialog({
       title: "编辑电表",
       width: "40%",
-      contentRenderer: () => EditForm,
-      props: {
-        data: row
-      },
-      closeCallBack: ({ options, index: _index }) => {
-        if (options.props.data) {
-          message("保存成功", { type: "success" });
-          onSearch();
-        }
-      },
-      on: {
-        save: _data => {
-          message("保存成功", { type: "success" });
-          onSearch();
-        },
-        close: () => {
-          // 关闭对话框
-        }
-      }
+      hideFooter: true,
+      appendToBody: true,
+      destroyOnClose: true,
+      contentRenderer: ({ options, index }) =>
+        h(EditForm, {
+          data: {
+            ...row,
+            address: row.installAddress ?? row.address ?? "",
+            currentReading:
+              row.totalPower != null && row.totalPower !== ""
+                ? String(row.totalPower)
+                : (row.currentReading ?? ""),
+            userName:
+              row.userName ??
+              (row.userId != null && row.userId !== ""
+                ? String(row.userId)
+                : "")
+          },
+          onSave: async (saveData: Record<string, any>) => {
+            try {
+              await updateMeter(buildMeterUpdatePayload(row, saveData) as any);
+              const reading = Number(saveData.currentReading);
+              if (
+                Number.isFinite(reading) &&
+                row.id != null &&
+                String(saveData.currentReading ?? "") !==
+                  String(row.totalPower ?? "")
+              ) {
+                try {
+                  await updateMeterReading(Number(row.id), {
+                    readingValue: reading,
+                    readingTime:
+                      saveData.lastReadTime ||
+                      dayjs().format("YYYY-MM-DD HH:mm:ss"),
+                    readingType: "manual",
+                    readingSource: "manual"
+                  });
+                } catch {
+                  // 主档案已保存，读数接口失败不阻断
+                }
+              }
+              message("保存成功", { type: "success" });
+              closeDialog(options, index, { command: "sure" });
+              await onSearch();
+            } catch {
+              message("保存失败", { type: "error" });
+            }
+          },
+          onClose: () => {
+            closeDialog(options, index, { command: "cancel" });
+          }
+        })
     });
   }
 
@@ -482,22 +549,14 @@ export function useElectricMeter(tableRef: Ref) {
       hideFooter: true,
       contentRenderer: () => BasicBusiness,
       props: {
-        data: row
+        data: row,
+        meterType: "electric",
+        config: electricMeterConfig
       },
       on: {
         refresh: () => {
           onSearch();
           message("已刷新", { type: "success" });
-        },
-        open1: () => {
-          console.log("open1 event received, opening Open1Dialog");
-          message("正在打开界面...", { type: "info" });
-          addDialog({
-            title: "打开1界面",
-            width: "40%",
-            contentRenderer: () => Open1Dialog,
-            hideFooter: true
-          });
         },
         close: () => {
           // nothing

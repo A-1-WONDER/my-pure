@@ -1,18 +1,22 @@
 import dayjs from "dayjs";
-import EditForm from "./edit-form.vue";
-import DetailDialog from "./detail-dialog.vue";
+import { h } from "vue";
+import BasicBusiness from "@/views/monitor2/meter-template/basic-business.vue";
 import { message } from "@/utils/message";
-import { addDialog } from "@/components/ReDialog";
+import { addDialog, closeDialog } from "@/components/ReDialog";
 import type { PaginationProps } from "@pureadmin/table";
 import { type Ref, reactive, ref, onMounted } from "vue";
 import { getKeyList } from "@pureadmin/utils";
 import {
   batchDeleteAlarmEvents,
   clearAllAlarmEvents,
-  getAlarmEventQueryList,
-  processAlarmEvent
+  closeAlarmEvent,
+  getAlarmEventQueryList
 } from "@/api/alarm-event-query";
+import { getMeterDetail, getMeterList } from "@/api/meters";
+import { getMeterTypeConfig } from "@/config/meter-types";
 import { getAlarmTypeLabel, getAlarmTypeTagType } from "../constants";
+
+const electricMeterConfig = getMeterTypeConfig("electric");
 
 /** 兼容 { code: 0 } 与 { success: true }（mock/_util 与部分后端） */
 function isAlarmListResponseOk(res: Record<string, any> | null | undefined) {
@@ -22,34 +26,35 @@ function isAlarmListResponseOk(res: Record<string, any> | null | undefined) {
   return false;
 }
 
+/** 状态列：未关闭显示红色「已触发」，已关闭显示灰态 */
 function resolveAlarmStatus(row: Record<string, any>) {
   const s = row.alarmStatus;
-  const numMap: Record<number, { text: string; type: string }> = {
-    0: { text: "未处理", type: "warning" },
-    1: { text: "处理中", type: "primary" },
-    2: { text: "已处理", type: "success" }
-  };
-  const strMap: Record<string, { text: string; type: string }> = {
-    pending: { text: "未处理", type: "warning" },
-    processing: { text: "处理中", type: "primary" },
-    resolved: { text: "已处理", type: "success" },
-    closed: { text: "已关闭", type: "info" },
-    handled: { text: "已处理", type: "success" }
-  };
-  if (s === null || s === undefined || s === "") {
-    return { text: "-", type: "info" };
+  const n =
+    typeof s === "number"
+      ? s
+      : typeof s === "string" && /^\d+$/.test(s)
+        ? Number(s)
+        : null;
+
+  if (n === 2 || s === "closed" || s === "ignored") {
+    return { text: "已关闭", type: "info" };
   }
-  if (typeof s === "number" && Number.isFinite(s)) {
-    return numMap[s] ?? { text: String(s), type: "info" };
+  // 默认：列表中的有效报警视为已触发
+  return { text: "已触发", type: "danger" };
+}
+
+function unwrapMeterPayload(res: Record<string, any>) {
+  const data = res?.data ?? res;
+  if (data?.content && Array.isArray(data.content)) {
+    return data.content[0] ?? null;
   }
-  if (typeof s === "string" && /^\d+$/.test(s)) {
-    const n = Number(s);
-    return numMap[n] ?? { text: s, type: "info" };
+  if (data?.list && Array.isArray(data.list)) {
+    return data.list[0] ?? null;
   }
-  if (typeof s === "string" && strMap[s]) {
-    return strMap[s];
+  if (data && typeof data === "object" && (data.id || data.meterNo)) {
+    return data;
   }
-  return { text: String(s), type: "info" };
+  return null;
 }
 
 export function useAlarmEventQuery(tableRef: Ref) {
@@ -159,13 +164,13 @@ export function useAlarmEventQuery(tableRef: Ref) {
           : "-"
     },
     {
-      label: "报警状态",
+      label: "状态",
       prop: "alarmStatus",
       minWidth: 100,
       cellRenderer: ({ row, props }) => {
         const { text, type } = resolveAlarmStatus(row);
         return (
-          <el-tag size={props.size} type={type as any} effect="plain">
+          <el-tag size={props.size} type={type as any} effect="dark">
             {text}
           </el-tag>
         );
@@ -184,34 +189,9 @@ export function useAlarmEventQuery(tableRef: Ref) {
       }
     },
     {
-      label: "处理人",
-      prop: "handledBy",
-      minWidth: 100,
-      formatter: ({ handledBy }) =>
-        handledBy !== null && handledBy !== undefined && handledBy !== ""
-          ? String(handledBy)
-          : "-"
-    },
-    {
-      label: "处理时间",
-      prop: "handledTime",
-      minWidth: 180,
-      formatter: ({ handledTime }) => {
-        if (!handledTime) return "-";
-        const d = dayjs(handledTime);
-        return d.isValid()
-          ? d.format("YYYY-MM-DD HH:mm:ss")
-          : String(handledTime);
-      }
-    },
-    {
-      label: "处理备注",
-      prop: "handlingRemark",
-      minWidth: 140
-    },
-    {
       label: "操作",
       fixed: "right",
+      width: 220,
       slot: "operation"
     }
   ];
@@ -291,64 +271,110 @@ export function useAlarmEventQuery(tableRef: Ref) {
     }
   }
 
-  function onEdit(row) {
-    const alarmStatus = Number(row?.alarmStatus);
-    if (alarmStatus === 1) {
-      message("该报警事件已处理，无需重复处理", { type: "info" });
+  async function onCloseAlarm(row) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id)) {
+      message("无效的报警事件", { type: "warning" });
       return;
     }
-    if (alarmStatus === 2) {
-      message("该报警事件已关闭，无法再处理", { type: "warning" });
+    const status = Number(row?.alarmStatus);
+    if (status === 2) {
+      message("该报警已关闭", { type: "info" });
       return;
     }
-    addDialog({
-      title: "处理报警事件",
-      width: "50%",
-      hideFooter: true,
-      contentRenderer: () => EditForm,
-      props: {
-        data: row
-      },
-      closeCallBack: ({ options }) => {
-        if (options.props.data) {
-          onSearch();
-        }
-      },
-      on: {
-        save: async payload => {
-          try {
-            const res = (await processAlarmEvent(payload)) as Record<
-              string,
-              any
-            >;
-            const ok = res?.code === 0 || res?.success === true;
-            if (!ok) {
-              message(String(res?.msg ?? res?.message ?? "处理失败"), {
-                type: "warning"
-              });
-              return;
-            }
-            message("处理成功", { type: "success" });
-            onSearch();
-          } catch (error) {
-            console.error("处理报警事件失败:", error);
-            message("处理失败，请稍后重试", { type: "error" });
-          }
-        },
-        close: () => {}
+    try {
+      const res = (await closeAlarmEvent({ id })) as Record<string, any>;
+      const ok = res?.code === 0 || res?.success === true;
+      if (ok) {
+        message("已关闭报警", { type: "success" });
+        await onSearch();
+      } else {
+        message(String(res?.msg ?? res?.message ?? "关闭失败"), {
+          type: "warning"
+        });
       }
-    });
+    } catch (e) {
+      console.error("关闭报警失败:", e);
+      message("关闭失败，请稍后重试", { type: "error" });
+    }
   }
 
-  function onBiz(row) {
+  async function onDelete(row) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id)) {
+      message("无效的报警事件", { type: "warning" });
+      return;
+    }
+    try {
+      const res = (await batchDeleteAlarmEvents([id])) as Record<string, any>;
+      const ok = res?.code === 0 || res?.success === true;
+      if (ok) {
+        message("已删除报警事件", { type: "success" });
+        await onSearch();
+      } else {
+        message(String(res?.msg ?? res?.message ?? "删除失败"), {
+          type: "warning"
+        });
+      }
+    } catch {
+      message("删除失败", { type: "error" });
+    }
+  }
+
+  async function resolveMeterForBiz(row: Record<string, any>) {
+    const meterId = Number(row?.meterId ?? row?.deviceId ?? row?.targetId);
+    if (Number.isFinite(meterId) && meterId > 0) {
+      try {
+        const res = (await getMeterDetail(meterId)) as Record<string, any>;
+        const meter = unwrapMeterPayload(res);
+        if (meter) return meter;
+      } catch (e) {
+        console.warn("按 id 加载电表失败，尝试表号:", e);
+      }
+    }
+    const meterNo = String(row?.meterNo ?? "").trim();
+    if (meterNo) {
+      try {
+        const res = (await getMeterList({
+          page: 1,
+          size: 1,
+          meterNo
+        })) as Record<string, any>;
+        const meter = unwrapMeterPayload(res);
+        if (meter) return meter;
+      } catch (e) {
+        console.warn("按表号加载电表失败:", e);
+      }
+    }
+    return null;
+  }
+
+  async function onBiz(row) {
+    const meter = await resolveMeterForBiz(row);
+    if (!meter) {
+      message("未找到关联电表，无法打开基本业务详情", { type: "warning" });
+      return;
+    }
+
     addDialog({
-      title: "报警事件详情",
+      title: "基本业务",
       width: "60%",
-      contentRenderer: () => DetailDialog,
-      props: {
-        data: row
-      },
-      hideFooter: true
+      appendToBody: true,
+      destroyOnClose: true,
+      closeOnClickModal: false,
+      hideFooter: true,
+      contentRenderer: ({ options, index }) =>
+        h(BasicBusiness, {
+          data: meter,
+          meterType: "electric",
+          config: electricMeterConfig,
+          onRefresh: () => {
+            message("已刷新", { type: "success" });
+          },
+          onClose: () => {
+            closeDialog(options, index);
+          }
+        })
     });
   }
 
@@ -435,8 +461,9 @@ export function useAlarmEventQuery(tableRef: Ref) {
     pagination,
     selectedNum,
     onSearch,
-    onEdit,
     onBiz,
+    onCloseAlarm,
+    onDelete,
     clearAll,
     resetForm,
     onbatchDel,

@@ -103,6 +103,27 @@ function handleClose(
   closeDialog(options, index, args);
   eventsCallBack("close", options, index);
 }
+
+/** 将 options.on 中的事件透传到内容组件（如 edit-form 的 save/close） */
+function contentEventHandlers(options: DialogOptions, index: number) {
+  const userOn = (options as DialogOptions & { on?: Record<string, Function> })
+    ?.on;
+  const handlers: Record<string, (...args: any[]) => void> = {};
+  if (userOn && typeof userOn === "object") {
+    Object.keys(userOn).forEach(key => {
+      const fn = userOn[key];
+      if (typeof fn === "function") {
+        handlers[key] = (...args: any[]) => fn(...args);
+      }
+    });
+  }
+  const userClose = handlers.close;
+  handlers.close = (args?: any) => {
+    userClose?.(args);
+    handleClose(options, index, args ?? { command: "close" });
+  };
+  return handlers;
+}
 </script>
 
 <template>
@@ -163,7 +184,7 @@ function handleClose(
     <component
       v-bind="options?.props"
       :is="options.contentRenderer({ options, index })"
-      @close="args => handleClose(options, index, args)"
+      v-on="contentEventHandlers(options, index)"
     />
     <!-- footer -->
     <template v-if="!options?.hideFooter" #footer>

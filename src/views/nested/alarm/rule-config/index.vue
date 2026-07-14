@@ -810,7 +810,7 @@ onMounted(async () => {
             <el-input
               v-model="form.remark"
               type="textarea"
-              rows="2"
+              :rows="2"
               class="max-w-xl"
             />
           </el-form-item>
@@ -1022,7 +1022,8 @@ onMounted(async () => {
 
 <style lang="scss" scoped>
 .alarm-rule-config {
-  padding: 16px 24px 32px;
+  /* 外边距由布局 .main-content { margin: 24px } 统一，与 event-query 一致 */
+  padding: 0 0 8px;
 }
 
 /* 大标题：白底卡片（暗色主题用面板背景色） */

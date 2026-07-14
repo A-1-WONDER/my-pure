@@ -1,10 +1,10 @@
 import dayjs from "dayjs";
+import { h, type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import EditForm from "./edit-form.vue";
 import BasicBusiness from "./basic-business.vue";
 import { message } from "@/utils/message";
-import { addDialog } from "@/components/ReDialog";
+import { addDialog, closeDialog } from "@/components/ReDialog";
 import type { PaginationProps } from "@pureadmin/table";
-import { type Ref, reactive, ref, onMounted, toRaw } from "vue";
 import { getKeyList } from "@pureadmin/utils";
 import {
   getMeterList,
@@ -449,6 +449,11 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
     row: Record<string, any>,
     saveData: Record<string, any>
   ) {
+    const statusRaw = saveData.status ?? row.status;
+    const statusNum =
+      statusRaw === "" || statusRaw === null || statusRaw === undefined
+        ? row.status
+        : Number(statusRaw);
     return {
       id: row.id,
       meterId: row.meterId ?? row.id,
@@ -456,11 +461,15 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       meterType: row.meterType || meterType,
       installAddress: saveData.address ?? row.installAddress ?? row.address,
       remark: saveData.remark ?? row.remark,
-      status: saveData.status ?? row.status,
-      installTime: saveData.installTime ?? row.installTime,
+      status: Number.isFinite(statusNum) ? statusNum : row.status,
+      installTime: saveData.installTime || row.installTime,
       collectorId: row.collectorId,
       userId: row.userId,
-      enabled: row.enabled
+      enabled: row.enabled,
+      totalPower:
+        saveData.currentReading === "" || saveData.currentReading == null
+          ? row.totalPower
+          : Number(saveData.currentReading)
     };
   }
 
@@ -524,32 +533,42 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       addDialog({
         title: `编辑${config.name}`,
         width: "40%",
-        contentRenderer: () => EditForm,
-        props: {
-          data: row,
-          meterType: meterType,
-          config: config
-        },
-        closeCallBack: ({ options, index: _index }) => {
-          if (options.props.data) {
-            message("保存成功", { type: "success" });
-            onSearch();
-          }
-        },
-        on: {
-          save: async saveData => {
-            try {
-              await updateMeter(buildMeterUpdatePayload(row, saveData));
-              message("保存成功", { type: "success" });
-              onSearch();
-            } catch {
-              message("保存失败", { type: "error" });
+        hideFooter: true,
+        appendToBody: true,
+        destroyOnClose: true,
+        contentRenderer: ({ options, index }) =>
+          h(EditForm, {
+            data: {
+              ...row,
+              address: row.installAddress ?? row.address ?? "",
+              currentReading:
+                row.totalPower != null && row.totalPower !== ""
+                  ? String(row.totalPower)
+                  : (row.currentReading ?? ""),
+              userName:
+                row.userName ??
+                (row.userId != null && row.userId !== ""
+                  ? String(row.userId)
+                  : "")
+            },
+            meterType,
+            config,
+            onSave: async (saveData: Record<string, any>) => {
+              try {
+                await updateMeter(
+                  buildMeterUpdatePayload(row, saveData) as any
+                );
+                message("保存成功", { type: "success" });
+                closeDialog(options, index, { command: "sure" });
+                await onSearch();
+              } catch {
+                message("保存失败", { type: "error" });
+              }
+            },
+            onClose: () => {
+              closeDialog(options, index, { command: "cancel" });
             }
-          },
-          close: () => {
-            // 关闭对话框
-          }
-        }
+          })
       });
     } catch (error) {
       console.error("打开编辑弹窗失败:", error);

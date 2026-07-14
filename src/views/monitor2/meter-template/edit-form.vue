@@ -146,14 +146,12 @@ onMounted(() => {
 });
 
 const onSave = () => {
-  if (!form.meterNo || !form.userName) {
+  if (!form.meterNo) {
     ElMessage.warning("请填写必填字段");
     return;
   }
 
-  // 触发保存事件
   emit("save", { ...form });
-  ElMessage.success("保存成功");
 };
 
 const onCancel = () => {
