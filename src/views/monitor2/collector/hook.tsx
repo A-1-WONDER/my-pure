@@ -19,8 +19,19 @@ export function useCollector(tableRef: Ref) {
   const form = reactive({
     name: "",
     code: "",
-    createTime: ""
+    createTime: null as string[] | null
   });
+
+  function applyCollectorSearchParams(params: Record<string, unknown>) {
+    if (form.name) params.collectorName = form.name;
+    if (form.code) params.collectorNo = form.code;
+    if (Array.isArray(form.createTime) && form.createTime.length === 2) {
+      params.createTime = [
+        dayjs(form.createTime[0]).format("YYYY-MM-DD HH:mm:ss"),
+        dayjs(form.createTime[1]).format("YYYY-MM-DD HH:mm:ss")
+      ];
+    }
+  }
   const dataList = ref<CollectorInfo[]>([]);
   const loading = ref(true);
   const selectedNum = ref(0);
@@ -242,8 +253,7 @@ export function useCollector(tableRef: Ref) {
       let page = 1;
       let total = 0;
       const params: Record<string, unknown> = { size: 200 };
-      if (form.name) params.collectorName = form.name;
-      if (form.code) params.collectorNo = form.code;
+      applyCollectorSearchParams(params);
       do {
         const result = await getCollectorList({ ...params, page });
         const items = result?.content ?? [];
@@ -324,15 +334,17 @@ export function useCollector(tableRef: Ref) {
     });
   }
 
-  async function onSearch() {
+  async function onSearch(opts?: { resetPage?: boolean }) {
+    if (opts?.resetPage) {
+      pagination.currentPage = 1;
+    }
     loading.value = true;
     try {
       const params: Record<string, unknown> = {
         page: pagination.currentPage,
         size: pagination.pageSize
       };
-      if (form.name) params.collectorName = form.name;
-      if (form.code) params.collectorNo = form.code;
+      applyCollectorSearchParams(params);
 
       const result = await getCollectorList(params);
 
@@ -400,6 +412,10 @@ export function useCollector(tableRef: Ref) {
   const resetForm = formEl => {
     if (!formEl) return;
     formEl.resetFields();
+    form.name = "";
+    form.code = "";
+    form.createTime = null;
+    pagination.currentPage = 1;
     onSearch();
   };
 

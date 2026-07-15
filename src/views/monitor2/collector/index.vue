@@ -77,7 +77,7 @@ const {
           type="primary"
           :icon="useRenderIcon('ri:search-line')"
           :loading="loading"
-          @click="onSearch"
+          @click="onSearch({ resetPage: true })"
         >
           搜索
         </el-button>

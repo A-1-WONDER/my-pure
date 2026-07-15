@@ -14,7 +14,11 @@ import {
 } from "@/api/alarm-event-query";
 import { getMeterDetail, getMeterList } from "@/api/meters";
 import { getMeterTypeConfig } from "@/config/meter-types";
-import { getAlarmTypeLabel, getAlarmTypeTagType } from "../constants";
+import {
+  getAlarmLevelLabel,
+  getAlarmTypeLabel,
+  getAlarmTypeTagType
+} from "../constants";
 
 const electricMeterConfig = getMeterTypeConfig("electric");
 
@@ -119,7 +123,8 @@ export function useAlarmEventQuery(tableRef: Ref) {
           important: "重要",
           urgent: "紧急"
         };
-        const levelText = levelMap[row.alarmLevel] || row.alarmLevel;
+        const levelText =
+          levelMap[row.alarmLevel] || getAlarmLevelLabel(row.alarmLevel);
         const levelColor =
           {
             normal: "info",

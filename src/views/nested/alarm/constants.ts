@@ -85,6 +85,166 @@ export const ALARM_TYPE_DEFS: AlarmTypeDef[] = [
     collectorRule: false,
     tagType: "info"
   },
+  {
+    value: "phase_a_power_reverse",
+    label: "电表·A相有功功率反向",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "phase_b_power_reverse",
+    label: "电表·B相有功功率反向",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "phase_c_power_reverse",
+    label: "电表·C相有功功率反向",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "power_off",
+    label: "电表·断电报警",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "cover_open",
+    label: "电表·开盖报警",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "phase_a_overload",
+    label: "电表·A相过载",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "phase_b_overload",
+    label: "电表·B相过载",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "phase_c_overload",
+    label: "电表·C相过载",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "metering_fault",
+    label: "电表·计量故障",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "meter_comm_fail",
+    label: "电表·连续通讯异常",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "meter_signal_weak",
+    label: "电表·设备信号弱",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "continuous_low_usage",
+    label: "电表·连续用电量过低",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "continuous_high_usage",
+    label: "电表·连续用电量过高",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "temp_high",
+    label: "电表·温度过高",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
+  {
+    value: "power_factor_low",
+    label: "电表·总功率因数超下限",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "current_imbalance",
+    label: "电表·电流不平衡",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "voltage_imbalance",
+    label: "电表·电压不平衡",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "current_reverse_phase",
+    label: "电表·电流逆相序",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "voltage_reverse_phase",
+    label: "电表·电压逆相序",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "warning"
+  },
+  {
+    value: "reading_jump",
+    label: "电表·读数跳变",
+    group: "meter",
+    meterRule: true,
+    collectorRule: false,
+    tagType: "danger"
+  },
 
   // —— 采集器类
   {
@@ -126,6 +286,22 @@ export const ALARM_TYPE_DEFS: AlarmTypeDef[] = [
     meterRule: false,
     collectorRule: true,
     tagType: "warning"
+  },
+  {
+    value: "collector_signal_weak",
+    label: "采集器·信号弱",
+    group: "collector",
+    meterRule: false,
+    collectorRule: true,
+    tagType: "warning"
+  },
+  {
+    value: "collector_long_offline",
+    label: "采集器·长时间离线",
+    group: "collector",
+    meterRule: false,
+    collectorRule: true,
+    tagType: "danger"
   },
 
   // —— 通信类
@@ -227,7 +403,15 @@ export const ALARM_GROUP_ORDER: (AlarmTypeGroupKey | "other")[] = [
 ];
 
 export function getAlarmTypeLabel(value: string): string {
-  return labelMap.get(value) ?? value;
+  const key = String(value ?? "").trim();
+  if (!key) return "—";
+  const known = labelMap.get(key);
+  if (known) return known;
+  // 未知编码不回显英文 snake_case / kebab-case
+  if (/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key)) {
+    return "其他报警";
+  }
+  return key;
 }
 
 export function getAlarmTypeGroup(value: string): AlarmTypeGroupKey | "other" {
@@ -242,9 +426,14 @@ export function getAlarmLevelLabel(value: string): string {
   const map: Record<string, string> = {
     normal: "一般",
     important: "重要",
-    urgent: "紧急"
+    urgent: "紧急",
+    "1": "一般",
+    "2": "重要",
+    "3": "紧急"
   };
-  return map[value] ?? value;
+  const key = String(value ?? "").trim();
+  if (!key) return "—";
+  return map[key] ?? map[key.toLowerCase()] ?? "未识别";
 }
 
 export function getAlarmTypeTagType(value: string): AlarmTypeTagType {

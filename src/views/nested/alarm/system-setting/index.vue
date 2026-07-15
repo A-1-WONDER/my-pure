@@ -128,7 +128,7 @@ const COLLECTOR_ROWS: AlarmRow[] = [
   {
     key: "collector_long_offline",
     title: "通讯设备长时间离线",
-    desc: "设备长时间离线，后台无法正常采集数据。"
+    desc: "采集器超过设定时长未成功通讯则报警（默认 120 分钟，可在后端 alarm.evaluation.collector-offline-minutes 调整）。开启后由系统内置评估，无需单独建规则。"
   }
 ];
 

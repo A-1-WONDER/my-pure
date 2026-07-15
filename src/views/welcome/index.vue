@@ -94,11 +94,11 @@ const loadLoginInfo = async () => {
 };
 
 const systemServiceRows = [
-  { label: "邮件服务", value: "已暂停", inactive: true },
+  { label: "邮件服务", value: "已开通", inactive: false },
   {
     label: "邮件剩余条数",
-    value: "0条(已暂停邮件通知服务)",
-    inactive: true
+    value: "按阿里云账户余额计费",
+    inactive: false
   },
   { label: "微信支付服务", value: "未开通", inactive: true },
   { label: "APP下载", value: "未开通", inactive: true },
@@ -580,7 +580,8 @@ const syncOnlineChartHeight = () => {
   const h2 = mailChartWrapRef.value?.clientHeight ?? 0;
   const height = Math.max(h1, h2);
   if (height > 0) {
-    topChartHeight.value = height;
+    // 限制上行图表高度，避免把下方「趋势/报警」挤出视口
+    topChartHeight.value = Math.min(Math.max(height, 96), 140);
   }
 };
 
@@ -1061,32 +1062,40 @@ onUnmounted(() => {
 
 .welcome-section {
   min-height: 0;
-
-  &__row {
-    height: 100%;
-  }
 }
 
 .welcome-section--top {
+  /* 绝不抢占整屏高度：此前 row height:100% 会解析成视口高度，挤掉中下两行 */
   flex: 0 0 auto;
+  max-height: 210px;
 
   .welcome-section__row {
     align-items: stretch;
+    height: auto;
+    max-height: 210px;
   }
 
   :deep(.el-col) {
     display: flex;
+    height: auto;
+    max-height: 210px;
+  }
+
+  .welcome-col {
+    height: auto;
+    max-height: 210px;
   }
 }
 
 .welcome-section--pair {
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
   flex-direction: column;
   min-height: 0;
 
   .welcome-section__row {
     flex: 1;
+    height: 100%;
     min-height: 0;
   }
 }
@@ -1094,16 +1103,20 @@ onUnmounted(() => {
 .welcome-section--bottom {
   flex: 0 0 auto;
   max-height: 108px;
+
+  .welcome-section__row {
+    height: auto;
+  }
 }
 
 .welcome-col {
-  height: 100%;
   margin-bottom: 0;
 }
 
 .welcome-col--pair {
   display: flex;
   align-items: stretch;
+  height: 100%;
 }
 
 .welcome-top-left {
@@ -1112,7 +1125,8 @@ onUnmounted(() => {
   gap: 8px;
   align-items: stretch;
   width: 100%;
-  height: 100%;
+  height: 180px;
+  max-height: 180px;
 }
 
 .welcome-card--top-stretch {
@@ -1150,14 +1164,20 @@ onUnmounted(() => {
 }
 
 @media (width <= 1100px) {
+  .welcome-section--top {
+    max-height: none;
+  }
+
   .welcome-top-left {
     flex-wrap: wrap;
+    height: auto;
+    max-height: none;
   }
 
   .welcome-card--online,
   .welcome-card--mail {
     flex: 1 1 calc(50% - 8px);
-    min-height: 160px;
+    min-height: 140px;
   }
 
   .welcome-card--count {
@@ -1192,6 +1212,7 @@ onUnmounted(() => {
 
 .welcome-card--top-fill {
   height: 100%;
+  max-height: 180px;
 
   :deep(.el-card__body) {
     display: flex;

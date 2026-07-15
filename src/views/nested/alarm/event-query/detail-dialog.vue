@@ -58,7 +58,11 @@ import dayjs from "dayjs";
 import { computed, reactive, ref } from "vue";
 import { message } from "@/utils/message";
 import { getAlarmEventQueryDetail } from "@/api/alarm-event-query";
-import { getAlarmTypeLabel, getAlarmTypeTagType } from "../constants";
+import {
+  getAlarmLevelLabel,
+  getAlarmTypeLabel,
+  getAlarmTypeTagType
+} from "../constants";
 
 const props = defineProps<{
   data?: Record<string, any>;
@@ -78,21 +82,19 @@ const alarmTypeTagType = computed(() =>
 );
 
 const alarmLevelText = computed(() => {
-  const map: Record<string, string> = {
-    normal: "一般",
-    important: "重要",
-    urgent: "紧急"
-  };
   const raw = detail.alarmLevel;
   if (raw === null || raw === undefined || raw === "") return "-";
-  return map[String(raw)] ?? String(raw);
+  return getAlarmLevelLabel(String(raw));
 });
 
 const alarmLevelTagType = computed(() => {
   const map: Record<string, string> = {
     normal: "info",
     important: "warning",
-    urgent: "danger"
+    urgent: "danger",
+    "1": "info",
+    "2": "warning",
+    "3": "danger"
   };
   return map[String(detail.alarmLevel)] ?? "info";
 });
@@ -109,7 +111,8 @@ const alarmStatusText = computed(() => {
   };
   const raw = detail.alarmStatus;
   if (raw === null || raw === undefined || raw === "") return "-";
-  return map[String(raw)] ?? String(raw);
+  const key = String(raw);
+  return map[key] ?? (/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? "未知状态" : key);
 });
 
 const alarmStatusTagType = computed(() => {

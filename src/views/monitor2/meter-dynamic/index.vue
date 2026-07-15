@@ -91,6 +91,14 @@ onMounted(() => {
           class="w-[170px]!"
         />
       </el-form-item>
+      <el-form-item label="模糊搜索" prop="blurry">
+        <el-input
+          v-model="form.blurry"
+          placeholder="表号关键词"
+          clearable
+          class="w-[170px]!"
+        />
+      </el-form-item>
       <el-form-item label="在线状态" prop="status">
         <el-select
           v-model="form.status"
@@ -134,12 +142,23 @@ onMounted(() => {
           <el-option label="多费率" value="multiRate" />
         </el-select>
       </el-form-item>
+      <el-form-item label="启用" prop="enabled">
+        <el-select
+          v-model="form.enabled"
+          placeholder="全部"
+          clearable
+          class="w-[120px]!"
+        >
+          <el-option label="启用" :value="true" />
+          <el-option label="停用" :value="false" />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button
           type="primary"
           :icon="useRenderIcon('ri:search-line')"
           :loading="loading"
-          @click="onSearch"
+          @click="onSearch({ resetPage: true })"
         >
           搜索
         </el-button>

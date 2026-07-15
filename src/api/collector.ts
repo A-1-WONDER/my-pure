@@ -28,11 +28,11 @@ export const getCollectorList = (params?: object) => {
   console.log("【collector.ts】原始参数params:", params);
 
   // 转换参数格式以匹配后端期望
-  const transformedParams = {
-    ...params,
-    // 根据后端文档，page参数从1开始
-    page: params?.page || 1,
-    size: params?.pageSize || 10
+  const raw = (params ?? {}) as Record<string, unknown>;
+  const transformedParams: Record<string, unknown> = {
+    ...raw,
+    page: raw.page || 1,
+    size: raw.pageSize ?? raw.size ?? 10
   };
 
   // 移除前端使用的参数名

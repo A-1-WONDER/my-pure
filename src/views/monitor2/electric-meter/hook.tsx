@@ -124,10 +124,12 @@ export function useElectricMeter(tableRef: Ref) {
 
   const form = reactive({
     meterNo: "",
+    blurry: "",
     meterType: undefined as string | undefined,
     status: undefined as string | undefined,
     collectorId: undefined as number | undefined,
     userId: undefined as number | undefined,
+    enabled: undefined as boolean | undefined,
     page: 0,
     size: 10
   });
@@ -565,20 +567,26 @@ export function useElectricMeter(tableRef: Ref) {
     });
   }
 
-  async function onSearch() {
+  async function onSearch(opts?: { resetPage?: boolean }) {
+    if (opts?.resetPage) {
+      pagination.currentPage = 1;
+    }
     loading.value = true;
 
     try {
-      // 准备请求参数
-      const requestParams = {
-        meterNo: form.meterNo || "",
-        meterType: form.meterType || "",
-        status: form.status || "",
-        collectorId: form.collectorId || "",
-        userId: form.userId || "",
-        page: pagination.currentPage, // 使用pagination的currentPage
-        size: pagination.pageSize // 使用pagination的pageSize
+      const requestParams: Record<string, unknown> = {
+        page: pagination.currentPage,
+        size: pagination.pageSize
       };
+      if (form.meterNo) requestParams.meterNo = form.meterNo;
+      if (form.blurry) requestParams.blurry = form.blurry;
+      if (form.meterType) requestParams.meterType = form.meterType;
+      if (form.status) requestParams.status = form.status;
+      if (form.collectorId) requestParams.collectorId = form.collectorId;
+      if (form.userId) requestParams.userId = form.userId;
+      if (form.enabled !== undefined && form.enabled !== null) {
+        requestParams.enabled = form.enabled;
+      }
 
       console.log("发送的请求参数:", requestParams);
 
@@ -615,7 +623,7 @@ export function useElectricMeter(tableRef: Ref) {
             pagination.currentPage = response.data.number + 1;
           } else if (requestParams.page !== undefined) {
             // 使用请求参数中的page（从1开始）
-            pagination.currentPage = requestParams.page;
+            pagination.currentPage = Number(requestParams.page) || 1;
           }
           // 否则保持当前的currentPage值
 
@@ -668,10 +676,12 @@ export function useElectricMeter(tableRef: Ref) {
     if (!formEl) return;
     formEl.resetFields();
     form.meterNo = "";
+    form.blurry = "";
     form.meterType = undefined;
     form.status = undefined;
     form.collectorId = undefined;
     form.userId = undefined;
+    form.enabled = undefined;
     form.page = 0;
     form.size = 10;
     pagination.currentPage = 1;

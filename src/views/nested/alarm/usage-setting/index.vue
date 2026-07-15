@@ -267,7 +267,7 @@ const {
                 placeholder="用量"
                 class="usage-add__number"
               />
-              <span class="usage-add__unit">Kwh</span>
+              <span class="usage-add__unit">千瓦时</span>
             </div>
           </el-form-item>
           <el-form-item label="报警静默期">

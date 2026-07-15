@@ -46,7 +46,10 @@ function formatCompareOp(op: unknown) {
   const s = String(op ?? "");
   if (s === "lt") return "低于";
   if (s === "gt") return "高于";
-  return s || "—";
+  if (s === "qoq_up") return "环比上升";
+  if (s === "qoq_down") return "环比下降";
+  if (!s) return "—";
+  return /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(s) ? "未识别" : s;
 }
 
 function formatTime(v: unknown) {
@@ -158,7 +161,7 @@ export function useAlarmUsageSetting() {
       return {
         id: r.id,
         ruleName: String(r.ruleName ?? "—"),
-        rangeText: `${formatCompareOp(r.compareOp)} ${r.threshold ?? "—"} Kwh`,
+        rangeText: `${formatCompareOp(r.compareOp)} ${r.threshold ?? "—"} 千瓦时`,
         silenceDays,
         scopeText:
           targets === "all"
@@ -469,7 +472,7 @@ export function useAlarmUsageSetting() {
       addForm.thresholdKwh == null ||
       !Number.isFinite(Number(addForm.thresholdKwh))
     ) {
-      message("请填写区间用量（Kwh）", { type: "warning" });
+      message("请填写区间用量（千瓦时）", { type: "warning" });
       return;
     }
     const silenceDays = Number(addForm.silenceDays);

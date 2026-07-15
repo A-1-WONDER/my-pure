@@ -14,12 +14,15 @@ import { addDialog } from "@/components/ReDialog";
 import Delete from "~icons/ep/delete";
 import Document from "~icons/ep/document";
 import Edit from "~icons/ep/edit";
+import Refresh from "~icons/ep/refresh";
 import View from "~icons/ep/view";
 import RuleDetailDialog from "./rule-detail-dialog.vue";
 import {
   getAlarmTypeLabel,
+  getAlarmTypesByGroup,
   getAlarmTypesForCollectorRule,
-  getAlarmTypesForMeterRule
+  getAlarmTypesForMeterRule,
+  type AlarmTypeGroupKey
 } from "../constants";
 import {
   alarmLevelLabelText,
@@ -119,6 +122,32 @@ const form = reactive({
 const saving = ref(false);
 const listLoading = ref(false);
 const ruleList = ref<any[]>([]);
+const searchFormRef = ref();
+/** 列表筛选（与上方配置表单分开） */
+const searchForm = reactive({
+  ruleName: "",
+  alarmType: "",
+  alarmLevel: "",
+  enabled: undefined as boolean | undefined
+});
+const listPagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+});
+const alarmTypeByGroup = getAlarmTypesByGroup();
+const alarmTypeGroupOrder: AlarmTypeGroupKey[] = [
+  "meter",
+  "collector",
+  "communication",
+  "data"
+];
+const alarmGroupLabels: Record<AlarmTypeGroupKey, string> = {
+  meter: "电表类",
+  collector: "采集器类",
+  communication: "通信类",
+  data: "数据类"
+};
 /** 正在切换启用状态的规则 id，用于禁用开关避免重复提交 */
 const togglingEnabledId = ref<number | null>(null);
 const ruleDocVisible = ref(false);
@@ -463,26 +492,70 @@ async function handleSave() {
   }
 }
 
-async function loadRuleList() {
+async function loadRuleList(opts?: { resetPage?: boolean }) {
+  if (opts?.resetPage) {
+    listPagination.currentPage = 1;
+  }
   listLoading.value = true;
   try {
-    const res = (await getAlarmRuleList({
-      currentPage: 1,
-      pageSize: 50
-    })) as any;
+    const body: Record<string, unknown> = {
+      currentPage: listPagination.currentPage,
+      pageSize: listPagination.pageSize
+    };
+    if (searchForm.ruleName?.trim()) {
+      body.ruleName = searchForm.ruleName.trim();
+    }
+    if (searchForm.alarmType) {
+      body.alarmType = searchForm.alarmType;
+    }
+    if (searchForm.alarmLevel) {
+      body.alarmLevel = searchForm.alarmLevel;
+    }
+    if (searchForm.enabled !== undefined && searchForm.enabled !== null) {
+      body.enabled = searchForm.enabled;
+    }
+    const res = (await getAlarmRuleList(body)) as any;
     const ok = res?.code === 0 || res?.success === true;
     const d = res?.data;
     if (ok && d) {
       const list = d.list ?? d.content ?? [];
       ruleList.value = Array.isArray(list) ? list : [];
+      listPagination.total = Number(d.total ?? 0);
+      if (d.currentPage != null) {
+        listPagination.currentPage = Number(d.currentPage) || 1;
+      }
+      if (d.pageSize != null) {
+        listPagination.pageSize = Number(d.pageSize) || listPagination.pageSize;
+      }
     } else {
       ruleList.value = [];
+      listPagination.total = 0;
     }
   } catch {
     ruleList.value = [];
+    listPagination.total = 0;
   } finally {
     listLoading.value = false;
   }
+}
+
+function resetSearchForm() {
+  searchForm.ruleName = "";
+  searchForm.alarmType = "";
+  searchForm.alarmLevel = "";
+  searchForm.enabled = undefined;
+  searchFormRef.value?.resetFields?.();
+  loadRuleList({ resetPage: true });
+}
+
+function handleListSizeChange(size: number) {
+  listPagination.pageSize = size;
+  loadRuleList({ resetPage: true });
+}
+
+function handleListCurrentChange(page: number) {
+  listPagination.currentPage = page;
+  loadRuleList();
 }
 
 async function handleDelete(row: { id: number }) {
@@ -925,11 +998,87 @@ onMounted(async () => {
             text
             type="primary"
             :loading="listLoading"
-            @click="loadRuleList"
+            @click="() => loadRuleList()"
             >刷新</el-button
           >
         </div>
       </template>
+
+      <el-form
+        ref="searchFormRef"
+        :inline="true"
+        :model="searchForm"
+        class="search-form mb-3"
+      >
+        <el-form-item label="规则名称" prop="ruleName">
+          <el-input
+            v-model="searchForm.ruleName"
+            clearable
+            placeholder="规则名称"
+            class="w-[180px]!"
+            @keyup.enter="loadRuleList({ resetPage: true })"
+          />
+        </el-form-item>
+        <el-form-item label="报警类型" prop="alarmType">
+          <el-select
+            v-model="searchForm.alarmType"
+            placeholder="请选择"
+            clearable
+            filterable
+            class="w-[220px]!"
+          >
+            <el-option-group
+              v-for="key in alarmTypeGroupOrder"
+              :key="key"
+              :label="alarmGroupLabels[key]"
+            >
+              <el-option
+                v-for="item in alarmTypeByGroup[key]"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-option-group>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="级别" prop="alarmLevel">
+          <el-select
+            v-model="searchForm.alarmLevel"
+            placeholder="请选择"
+            clearable
+            class="w-[140px]!"
+          >
+            <el-option label="一般" value="normal" />
+            <el-option label="重要" value="important" />
+            <el-option label="紧急" value="urgent" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用" prop="enabled">
+          <el-select
+            v-model="searchForm.enabled"
+            placeholder="全部"
+            clearable
+            class="w-[120px]!"
+          >
+            <el-option label="启用" :value="true" />
+            <el-option label="停用" :value="false" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button
+            type="primary"
+            :icon="useRenderIcon('ri:search-line')"
+            :loading="listLoading"
+            @click="loadRuleList({ resetPage: true })"
+          >
+            搜索
+          </el-button>
+          <el-button :icon="useRenderIcon(Refresh)" @click="resetSearchForm">
+            重置
+          </el-button>
+        </el-form-item>
+      </el-form>
+
       <el-table
         v-loading="listLoading"
         :data="ruleList"
@@ -1016,6 +1165,18 @@ onMounted(async () => {
           </template>
         </el-table-column>
       </el-table>
+      <div class="flex justify-end mt-3">
+        <el-pagination
+          v-model:current-page="listPagination.currentPage"
+          v-model:page-size="listPagination.pageSize"
+          background
+          layout="total, sizes, prev, pager, next, jumper"
+          :page-sizes="[10, 20, 50]"
+          :total="listPagination.total"
+          @size-change="handleListSizeChange"
+          @current-change="handleListCurrentChange"
+        />
+      </div>
     </el-card>
   </div>
 </template>
