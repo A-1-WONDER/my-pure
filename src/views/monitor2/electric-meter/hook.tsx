@@ -167,7 +167,11 @@ export function useElectricMeter(tableRef: Ref) {
       prop: "collectorId",
       minWidth: 100,
       cellRenderer: ({ row }) => {
-        return <span>{row.collectorName || `采集器${row.collectorId}`}</span>;
+        const text =
+          row.collectorName ||
+          row.collectorNo ||
+          (row.collectorId != null ? `采集器${row.collectorId}` : "-");
+        return <span>{text}</span>;
       }
     },
     {
@@ -319,7 +323,11 @@ export function useElectricMeter(tableRef: Ref) {
             arr.push(`${item[column.prop] || 0}%`);
           } else if (column.prop === "collectorId") {
             // 处理采集器
-            arr.push(item.collectorName || `采集器${item.collectorId}`);
+            arr.push(
+              item.collectorName ||
+                item.collectorNo ||
+                (item.collectorId != null ? `采集器${item.collectorId}` : "-")
+            );
           } else if (column.prop === "userId") {
             // 处理用户
             arr.push(item.remark || `用户${item.userId}`);

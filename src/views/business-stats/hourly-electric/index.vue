@@ -35,6 +35,9 @@
             <el-option label="多费率" value="multiRate" />
           </el-select>
         </el-form-item>
+        <el-form-item label="采集器" prop="collectorIds">
+          <CollectorMultiSelect v-model="form.collectorIds" />
+        </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
@@ -91,8 +94,12 @@ import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { message } from "@/utils/message";
 import { utils, writeFile } from "xlsx";
 import dayjs from "dayjs";
-import { addDialog } from "@/components/ReDialog";
-import DetailDialog from "./detail-dialog.vue";
+import { openMeterStatDetailDialog } from "../components/open-meter-stat-detail";
+import CollectorMultiSelect from "../components/CollectorMultiSelect.vue";
+import {
+  filterStatsByMeterIds,
+  loadScopedStatsMeters
+} from "../components/stats-meter-utils";
 import {
   getEnergyStatisticsSummary,
   simpleStatsApi,
@@ -117,7 +124,8 @@ let chartInstance: echarts.ECharts | null = null;
 
 const form = reactive({
   date: dayjs().format("YYYY-MM-DD"),
-  meterType: ""
+  meterType: "",
+  collectorIds: [] as number[]
 });
 
 const loading = ref(false);
@@ -292,7 +300,10 @@ const onSearch = async () => {
       dimension: "hour" as StatsDimension,
       startTime: timeParams.startTime,
       endTime: timeParams.endTime,
-      ignoreRadio: 0
+      ignoreRadio: 0 as const,
+      collectorIds: form.collectorIds?.length
+        ? [...form.collectorIds]
+        : undefined
     };
 
     console.log("发送的请求参数:", requestParams);
@@ -336,7 +347,20 @@ const onSearch = async () => {
 
       try {
         console.log("开始转换数据...");
-        dataList.value = transformStatsData(apiData);
+        let rows = transformStatsData(apiData);
+        // 电表类型仍由前端收窄；采集器已由后端 summary 过滤
+        if (form.meterType) {
+          const { allowedIds, meterRows } = await loadScopedStatsMeters({
+            meterType: form.meterType,
+            collectorIds: form.collectorIds
+          });
+          if (meterRows.length === 0) {
+            rows = [];
+          } else if (allowedIds.size > 0) {
+            rows = filterStatsByMeterIds(rows, allowedIds);
+          }
+        }
+        dataList.value = rows;
 
         console.log("转换后的数据:", dataList.value);
         console.log("数据长度:", dataList.value.length);
@@ -388,6 +412,7 @@ const resetForm = formEl => {
   formEl.resetFields();
   form.date = dayjs().format("YYYY-MM-DD");
   form.meterType = "";
+  form.collectorIds = [];
   onSearch();
 };
 
@@ -433,25 +458,13 @@ onMounted(() => {
 
 // 查看明细对话框
 const showDetailDialog = row => {
-  console.log("查看明细:", row);
-
-  addDialog({
-    title: `电表明细 - ${row.date} ${row.hour}:00`,
-    width: "90%",
-    fullscreenIcon: true,
-    contentRenderer: () => DetailDialog,
-    props: {
-      date: row.date,
-      hour: row.hour,
-      totalConsumption: row.totalConsumption,
-      meterStats: row.meterStats,
-      meterType: form.meterType
-    },
-    on: {
-      close: () => {
-        console.log("明细对话框关闭");
-      }
-    }
+  openMeterStatDetailDialog({
+    period: "hour",
+    date: row.date,
+    hour: row.hour,
+    totalConsumption: row.totalConsumption,
+    meterStats: row.meterStats,
+    meterType: form.meterType
   });
 };
 

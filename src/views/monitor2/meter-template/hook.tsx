@@ -216,9 +216,11 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
         cellRenderer: scope => {
           return (
             <span>
-              {scope.row.collectorNo ||
-                scope.row.collectorName ||
-                `采集器${scope.row.collectorId || ""}`}
+              {scope.row.collectorName ||
+                scope.row.collectorNo ||
+                (scope.row.collectorId != null
+                  ? `采集器${scope.row.collectorId}`
+                  : "-")}
             </span>
           );
         }
@@ -375,9 +377,9 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           } else if (column.prop === "collectorId") {
             // 处理采集器
             arr.push(
-              item.collectorNo ||
-                item.collectorName ||
-                `采集器${item.collectorId || ""}`
+              item.collectorName ||
+                item.collectorNo ||
+                (item.collectorId != null ? `采集器${item.collectorId}` : "-")
             );
           } else if (column.prop === "userId") {
             // 处理用户

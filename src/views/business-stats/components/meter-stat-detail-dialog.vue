@@ -65,6 +65,14 @@
         <el-button :icon="Refresh" @click="resetForm(formRef)">
           重置
         </el-button>
+        <el-button
+          type="success"
+          :icon="Download"
+          :loading="exporting"
+          @click="exportExcel"
+        >
+          导出为Excel
+        </el-button>
       </el-form-item>
     </el-form>
 
@@ -89,38 +97,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h, computed } from "vue";
-import { Search, Refresh } from "@element-plus/icons-vue";
+import { ref, reactive, onMounted, h, computed, type PropType } from "vue";
+import dayjs from "dayjs";
+import { utils, writeFile } from "xlsx";
+import { Search, Refresh, Download } from "@element-plus/icons-vue";
 import { ElTag } from "element-plus";
 import { message } from "@/utils/message";
 import type { PaginationProps } from "@pureadmin/table";
-import {
-  getMeterDetailWithExt,
-  getElectricMeterDetails,
-  type MeterDetailData
-} from "@/api/meters";
-import { getCollectorDetail } from "@/api/collector";
+import { getElectricMeterDetails } from "@/api/meters";
 import type { MeterStatItem } from "@/api/business-stats";
+import { METER_ENRICH_BATCH_SIZE } from "@/api/business-stats";
+import {
+  METER_STAT_PERIOD_META,
+  type MeterStatDetailPeriod
+} from "./meter-stat-period";
+import {
+  buildMeterArchiveMap,
+  loadStatsMeterRows,
+  runInBatches
+} from "./stats-meter-utils";
 
 defineOptions({
-  name: "HourlyElectricDetailDialog"
+  name: "MeterStatDetailDialog"
 });
 
 const props = defineProps({
+  /** hour | day | month | year — 仅影响用电量列文案与备注 */
+  period: {
+    type: String as PropType<MeterStatDetailPeriod>,
+    default: "hour"
+  },
   date: {
     type: String,
     required: true
   },
   hour: {
     type: Number,
-    required: true
+    default: undefined
   },
   totalConsumption: {
     type: Number,
     required: true
   },
   meterStats: {
-    type: Array as () => MeterStatItem[],
+    type: Array as PropType<MeterStatItem[]>,
     default: () => []
   },
   meterType: {
@@ -128,6 +148,10 @@ const props = defineProps({
     default: ""
   }
 });
+
+const periodMeta = computed(
+  () => METER_STAT_PERIOD_META[props.period] ?? METER_STAT_PERIOD_META.hour
+);
 
 const formRef = ref();
 const tableRef = ref();
@@ -141,7 +165,13 @@ const form = reactive({
 });
 
 const loading = ref(false);
+const exporting = ref(false);
 const dataList = ref([]);
+/** 当前筛选后的全量数据（导出用，不受分页截断） */
+const filteredAllList = ref<Record<string, any>[]>([]);
+/** 会话内复用电表档案，避免筛选/翻页重复拉列表 */
+let meterArchiveMapCache: Map<number, Record<string, any>> | null = null;
+let meterArchiveCacheKey = "";
 
 const statusMap = {
   "0": { text: "在线", type: "success" },
@@ -258,8 +288,8 @@ const pagination = reactive<PaginationProps>({
   background: true
 });
 
-// 使用电表管理的表头结构
-const columns = [
+// 表头结构共用；用电量列名随 period 变化
+const columns = computed(() => [
   {
     label: "序号",
     prop: "id",
@@ -342,16 +372,10 @@ const columns = [
     formatter: ({ remark }) => remark || "-"
   },
   {
-    label: "本小时用电量",
+    label: periodMeta.value.consumptionLabel,
     prop: "totalConsumption",
     minWidth: 120,
     formatter: ({ totalConsumption }) => `${totalConsumption || 0} kWh`
-  },
-  {
-    label: "剩余金额",
-    prop: "remainingAmount",
-    minWidth: 100,
-    formatter: ({ remainingAmount }) => `¥${remainingAmount || 0}`
   },
   {
     label: "其他",
@@ -366,177 +390,165 @@ const columns = [
       return h("span", null, () => displayText);
     }
   }
-];
+]);
+
+async function loadMeterArchiveMap() {
+  const cacheKey = props.meterType || "__all__";
+  if (meterArchiveMapCache && meterArchiveCacheKey === cacheKey) {
+    return meterArchiveMapCache;
+  }
+  const rows = await loadStatsMeterRows(props.meterType || undefined);
+  meterArchiveMapCache = buildMeterArchiveMap(rows);
+  meterArchiveCacheKey = cacheKey;
+  return meterArchiveMapCache;
+}
+
+function buildRowFromMeterStat(
+  meterStat: MeterStatItem,
+  archive?: Record<string, any>
+) {
+  const resolvedMeterId = resolveMeterId(meterStat as Record<string, any>);
+  const collectorId = archive?.collectorId;
+  const collectorName =
+    archive?.collectorName ||
+    archive?.collectorNo ||
+    (collectorId != null ? `采集器${collectorId}` : undefined);
+
+  return {
+    id: resolvedMeterId,
+    meterNo:
+      meterStat.meterNo ||
+      archive?.meterNo ||
+      (resolvedMeterId != null ? String(resolvedMeterId) : undefined),
+    meterName: /^mid:\d+$/i.test(String(meterStat.meterName || ""))
+      ? meterStat.meterNo || archive?.meterNo
+      : meterStat.meterName || archive?.meterName,
+    collectorId,
+    collectorName,
+    collectorNo: archive?.collectorNo,
+    status: archive?.laststatus ?? archive?.lastStatus ?? archive?.status,
+    laststatus: archive?.laststatus ?? archive?.lastStatus,
+    signalStrength: archive?.signalStrength,
+    meterAddress:
+      archive?.meterAddress || archive?.meterNo || meterStat.meterNo,
+    userId: archive?.userId,
+    userInfo: archive?.userInfo,
+    userName: archive?.userName,
+    meterType: archive?.meterType || props.meterType,
+    remark: periodMeta.value.buildRemark(props.date, props.hour),
+    totalConsumption: meterStat.totalConsumption,
+    voltage: archive?.voltage,
+    current: archive?.current,
+    temperature: archive?.temperature
+  };
+}
+
+function applyFilters(rows: Record<string, any>[]) {
+  let filteredData = [...rows];
+
+  if (form.meterNo) {
+    filteredData = filteredData.filter(item =>
+      item.meterNo?.includes(form.meterNo)
+    );
+  }
+
+  if (form.status) {
+    filteredData = filteredData.filter(
+      item => String(item.status ?? "").toUpperCase() === form.status
+    );
+  }
+
+  if (form.meterType) {
+    filteredData = filteredData.filter(
+      item => item.meterType === form.meterType
+    );
+  }
+
+  if (form.collectorId) {
+    filteredData = filteredData.filter(
+      item => item.collectorId === parseInt(form.collectorId)
+    );
+  }
+
+  if (form.userId) {
+    filteredData = filteredData.filter(
+      item => item.userId === parseInt(form.userId)
+    );
+  }
+
+  return filteredData;
+}
+
+function applyPagination(rows: Record<string, any>[]) {
+  const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
+  const endIndex = startIndex + pagination.pageSize;
+  filteredAllList.value = rows;
+  dataList.value = rows.slice(startIndex, endIndex);
+  pagination.total = rows.length;
+}
+
+async function enrichLastStatus(rows: Record<string, any>[]) {
+  const targets = rows.filter(row => row.id != null);
+  if (!targets.length) return;
+
+  const settled = await runInBatches(
+    targets,
+    METER_ENRICH_BATCH_SIZE,
+    async row => {
+      const response = await getElectricMeterDetails(row.id);
+      const laststatus = extractLastStatus(
+        extractResponsePayload(response as Record<string, any>)
+      );
+      return { id: row.id as number, laststatus };
+    }
+  );
+
+  const statusMap = new Map<number, string | number>();
+  settled.forEach(result => {
+    if (result.status !== "fulfilled") return;
+    const { id, laststatus } = result.value;
+    if (
+      id != null &&
+      laststatus !== null &&
+      laststatus !== undefined &&
+      laststatus !== ""
+    ) {
+      statusMap.set(id, laststatus);
+    }
+  });
+
+  if (!statusMap.size) return;
+
+  rows.forEach(row => {
+    const laststatus = statusMap.get(row.id);
+    if (laststatus === undefined) return;
+    row.laststatus = laststatus;
+    row.status = laststatus;
+  });
+}
 
 // 搜索
 const onSearch = async () => {
   loading.value = true;
 
   try {
-    const detailResults = await Promise.allSettled(
-      sourceMeterStats.value.map(async meterStat => {
-        const resolvedMeterId = resolveMeterId(
-          meterStat as Record<string, any>
-        );
-        const [detailRes, electricDetailRes] = await Promise.allSettled([
-          resolvedMeterId !== undefined
-            ? getMeterDetailWithExt(resolvedMeterId)
-            : Promise.reject(new Error("缺少meterId")),
-          resolvedMeterId !== undefined
-            ? getElectricMeterDetails(resolvedMeterId)
-            : Promise.reject(new Error("缺少meterId"))
-        ]);
-
-        const detailData =
-          detailRes.status === "fulfilled"
-            ? (extractResponsePayload(
-                detailRes.value as Record<string, any>
-              ) as MeterDetailData)
-            : undefined;
-        const electricDetailData =
-          electricDetailRes.status === "fulfilled"
-            ? extractResponsePayload(
-                electricDetailRes.value as Record<string, any>
-              )
-            : undefined;
-        const laststatus = extractLastStatus(
-          electricDetailData as Record<string, any>
-        );
-        const collectorId =
-          detailData?.collectorId ?? electricDetailData?.collectorId;
-        const collectorRes =
-          collectorId !== null && collectorId !== undefined
-            ? await getCollectorDetail(collectorId).catch(() => undefined)
-            : undefined;
-        const collectorData = collectorRes
-          ? (extractResponsePayload(
-              collectorRes as Record<string, any>
-            ) as Record<string, any>)
-          : undefined;
-
-        console.log("小时用量明细-采集器信息排查:", {
-          meterStat,
-          meterId: meterStat.meterId,
-          resolvedMeterId,
-          detailResStatus: detailRes.status,
-          detailData,
-          electricDetailResStatus: electricDetailRes.status,
-          electricDetailData,
-          extractedLastStatus: laststatus,
-          collectorIdFromDetail: detailData?.collectorId,
-          collectorIdFromElectricDetail: electricDetailData?.collectorId,
-          finalCollectorId: collectorId,
-          collectorRes,
-          collectorData
-        });
-
-        const assembledRow = {
-          id: resolvedMeterId,
-          meterNo:
-            meterStat.meterNo ||
-            detailData?.meterNo ||
-            electricDetailData?.meterNo,
-          meterName: /^mid:\d+$/i.test(String(meterStat.meterName || ""))
-            ? meterStat.meterNo ||
-              detailData?.meterNo ||
-              electricDetailData?.meterNo
-            : meterStat.meterName || detailData?.meterName,
-          collectorId,
-          collectorName:
-            collectorData?.collectorName ||
-            collectorData?.name ||
-            detailData?.collectorName ||
-            electricDetailData?.collectorName ||
-            `采集器${collectorId || ""}`,
-          collectorNo:
-            collectorData?.collectorNo ||
-            collectorData?.code ||
-            detailData?.collectorNo ||
-            electricDetailData?.collectorNo ||
-            (collectorId !== null && collectorId !== undefined
-              ? String(collectorId)
-              : undefined),
-          collectorStatus: collectorData?.status ?? collectorData?.enabled,
-          status:
-            laststatus ?? detailData?.status ?? electricDetailData?.status,
-          laststatus,
-          signalStrength:
-            (detailData as any)?.signalStrength ??
-            electricDetailData?.signalStrength,
-          meterAddress:
-            detailData?.meterAddress || electricDetailData?.meterAddress,
-          userId:
-            detailData?.userInfo?.userId ??
-            electricDetailData?.userInfo?.userId,
-          userInfo: detailData?.userInfo || electricDetailData?.userInfo,
-          meterType:
-            detailData?.meterType ||
-            electricDetailData?.meterType ||
-            props.meterType,
-          remark: `${props.date} ${String(props.hour).padStart(2, "0")}:00 时段统计`,
-          totalConsumption: meterStat.totalConsumption,
-          remainingAmount:
-            detailData?.remainingAmount ?? electricDetailData?.remainingAmount,
-          voltage: detailData?.voltage ?? electricDetailData?.voltage,
-          current: detailData?.current ?? electricDetailData?.current,
-          temperature:
-            detailData?.temperature ?? electricDetailData?.temperature
-        };
-
-        console.log("小时用量明细-最终行数据:", assembledRow);
-        return assembledRow;
+    const archiveMap = await loadMeterArchiveMap();
+    let rows = mergeRowsByMeterId(
+      sourceMeterStats.value.map(meterStat => {
+        const id = resolveMeterId(meterStat as Record<string, any>);
+        const archive = id != null ? archiveMap.get(id) : undefined;
+        return buildRowFromMeterStat(meterStat, archive);
       })
     );
 
-    let filteredData = detailResults
-      .filter(result => result.status === "fulfilled")
-      .map(result => result.value);
+    applyPagination(applyFilters(rows));
+    message("查询成功", { type: "success" });
 
-    filteredData = mergeRowsByMeterId(filteredData);
-
-    // 应用筛选条件
-    if (form.meterNo) {
-      filteredData = filteredData.filter(item =>
-        item.meterNo?.includes(form.meterNo)
-      );
-    }
-
-    if (form.status) {
-      filteredData = filteredData.filter(
-        item => String(item.status ?? "").toUpperCase() === form.status
-      );
-    }
-
-    if (form.meterType) {
-      filteredData = filteredData.filter(
-        item => item.meterType === form.meterType
-      );
-    }
-
-    if (form.collectorId) {
-      filteredData = filteredData.filter(
-        item => item.collectorId === parseInt(form.collectorId)
-      );
-    }
-
-    if (form.userId) {
-      filteredData = filteredData.filter(
-        item => item.userId === parseInt(form.userId)
-      );
-    }
-
-    // 分页处理
-    const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
-    const endIndex = startIndex + pagination.pageSize;
-
-    dataList.value = filteredData.slice(startIndex, endIndex);
-    pagination.total = filteredData.length;
-
-    if (detailResults.some(result => result.status === "rejected")) {
-      message("部分电表详情获取失败，已展示可用真实数据", { type: "warning" });
-    } else {
-      message("查询成功", { type: "success" });
-    }
+    // 后台补在线状态，不阻塞首屏
+    void enrichLastStatus(rows).then(() => {
+      rows = mergeRowsByMeterId(rows);
+      applyPagination(applyFilters(rows));
+    });
   } catch (error) {
     console.error("查询失败:", error);
     message("查询失败，请重试", { type: "error" });
@@ -558,6 +570,93 @@ const resetForm = formEl => {
   onSearch();
 };
 
+const meterTypeLabel = (meterType?: string) => {
+  const typeMap: Record<string, string> = {
+    "single-phase": "单相",
+    "three-phase": "三相",
+    prepaid: "预付费",
+    multiRate: "多费率"
+  };
+  return typeMap[meterType || ""] || meterType || "-";
+};
+
+const exportExcel = () => {
+  const rows = filteredAllList.value;
+  if (!rows.length) {
+    message("没有数据可以导出", { type: "warning" });
+    return;
+  }
+
+  exporting.value = true;
+  try {
+    const titleList = [
+      "序号",
+      "标签",
+      "采集器",
+      "在线状态",
+      "通讯地址",
+      "用户",
+      "电表类型",
+      "备注",
+      periodMeta.value.exportConsumptionLabel,
+      "其他"
+    ];
+
+    const body = rows.map(item => {
+      const collectorText = item.collectorNo
+        ? item.collectorNo
+        : item.collectorName
+          ? item.collectorName
+          : `采集器${item.collectorId || ""}`;
+      const statusText = getStatusDisplay(
+        item.laststatus ?? item.lastStatus ?? item.status
+      ).text;
+      const userText = item.userInfo?.userName
+        ? item.userInfo.userName
+        : item.userName
+          ? item.userName
+          : `用户${item.userId || ""}`;
+      const otherParts: string[] = [];
+      if (item.voltage) otherParts.push(`${item.voltage}V`);
+      if (item.current) otherParts.push(`${item.current}A`);
+      if (item.temperature) otherParts.push(`${item.temperature}°C`);
+
+      return [
+        item.id ?? "-",
+        item.meterNo || "-",
+        collectorText || "-",
+        statusText,
+        item.meterAddress || "-",
+        userText || "-",
+        meterTypeLabel(item.meterType),
+        item.remark || "-",
+        Number(item.totalConsumption || 0),
+        otherParts.join(" / ") || "-"
+      ];
+    });
+
+    const workSheet = utils.aoa_to_sheet([titleList, ...body]);
+    const workBook = utils.book_new();
+    utils.book_append_sheet(workBook, workSheet, periodMeta.value.sheetName);
+
+    const dateStr = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+    const periodPart =
+      props.period === "hour"
+        ? `${props.date}_${String(props.hour ?? 0).padStart(2, "0")}时`
+        : props.date;
+    writeFile(
+      workBook,
+      `${periodMeta.value.filePrefix}_${periodPart}_${dateStr}.xlsx`
+    );
+    message("导出成功", { type: "success" });
+  } catch (error) {
+    console.error("导出失败:", error);
+    message("导出失败，请重试", { type: "error" });
+  } finally {
+    exporting.value = false;
+  }
+};
+
 // 分页处理
 const handleSizeChange = (val: number) => {
   pagination.pageSize = val;
@@ -571,7 +670,6 @@ const handleCurrentChange = (val: number) => {
 };
 
 onMounted(() => {
-  console.log("明细对话框加载，参数:", props);
   onSearch();
 });
 </script>

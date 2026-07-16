@@ -36,6 +36,9 @@
             <el-option label="多费率" value="multiRate" />
           </el-select>
         </el-form-item>
+        <el-form-item label="采集器" prop="collectorIds">
+          <CollectorMultiSelect v-model="form.collectorIds" />
+        </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
@@ -84,19 +87,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, reactive, onMounted, onUnmounted, nextTick, h } from "vue";
 import * as echarts from "echarts";
 import { Search, Refresh, Download } from "@element-plus/icons-vue";
+import { ElButton } from "element-plus";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { message } from "@/utils/message";
 import { utils, writeFile } from "xlsx";
 import dayjs from "dayjs";
-import { getMeterList } from "@/api/meters";
+import { openMeterStatDetailDialog } from "../components/open-meter-stat-detail";
+import CollectorMultiSelect from "../components/CollectorMultiSelect.vue";
 import {
-  extractDayPowerValueFromResponse,
-  extractMeterRowsFromApiResponse,
-  getDeviceDayPower,
-  resolveMeterRowDeviceId,
+  fetchMeterDayStatsForDate,
+  filterStatsByMeterIds,
+  loadScopedStatsMeters
+} from "../components/stats-meter-utils";
+import {
   simpleStatsApi,
   transformStatsData,
   unwrapEnergyStatisticsSummaryResponse,
@@ -122,7 +128,8 @@ const form = reactive({
     dayjs().subtract(6, "day").format("YYYY-MM-DD"),
     dayjs().format("YYYY-MM-DD")
   ] as string[],
-  meterType: ""
+  meterType: "",
+  collectorIds: [] as number[]
 });
 
 const loading = ref(false);
@@ -160,16 +167,10 @@ const listDatesInclusive = (start: string, end: string): string[] => {
 };
 
 const loadDailyStatsFromDayPower = async () => {
-  const meterResponse = await getMeterList({
-    page: 1,
-    size: 1000,
-    meterType: form.meterType || undefined
+  const { meterRows } = await loadScopedStatsMeters({
+    meterType: form.meterType || undefined,
+    collectorIds: form.collectorIds
   });
-  const meterRows = extractMeterRowsFromApiResponse(
-    meterResponse as Record<string, any>
-  ).filter(
-    (item: Record<string, any>) => resolveMeterRowDeviceId(item) != null
-  );
 
   if (meterRows.length === 0) {
     return [];
@@ -183,58 +184,34 @@ const loadDailyStatsFromDayPower = async () => {
           dayjs().format("YYYY-MM-DD")
         ];
   const dates = listDatesInclusive(dr[0], dr[1]);
-  const rows = await Promise.all(
-    dates.map(async date => {
-      const settled = await Promise.allSettled(
-        meterRows.map((item: Record<string, any>) => {
-          const deviceId = resolveMeterRowDeviceId(item)!;
-          return getDeviceDayPower(deviceId, date).then(res => ({
-            meterId: deviceId,
-            meterNo: String(item.meterNo ?? item.meterName ?? deviceId),
-            totalConsumption: extractDayPowerValueFromResponse(
-              res as Record<string, any>
-            )
-          }));
-        })
-      );
+  const rows: StatsDisplayData[] = [];
 
-      const meterStats = settled
-        .filter(
-          (
-            result
-          ): result is PromiseFulfilledResult<{
-            meterId: number;
-            meterNo: string;
-            totalConsumption: number;
-          }> => result.status === "fulfilled"
-        )
-        .map(result => result.value)
-        .filter(item => Number.isFinite(item.totalConsumption));
+  // 按天顺序请求：每天 1～2 次批量接口（50 表 ≈ 7 天 7 次），避免 D×M 并发风暴
+  for (const date of dates) {
+    const meterStats = await fetchMeterDayStatsForDate(meterRows, date);
+    const totalConsumption = meterStats.reduce(
+      (sum, item) => sum + Number(item.totalConsumption || 0),
+      0
+    );
+    const activeDeviceCount = meterStats.filter(
+      item => Number(item.totalConsumption || 0) > 0
+    ).length;
 
-      const totalConsumption = meterStats.reduce(
-        (sum, item) => sum + Number(item.totalConsumption || 0),
-        0
-      );
-      const activeDeviceCount = meterStats.filter(
-        item => Number(item.totalConsumption || 0) > 0
-      ).length;
-
-      return {
-        timeKey: dayjs(date).format("YYYYMMDD"),
-        date,
-        totalConsumption: Number(totalConsumption.toFixed(2)),
-        deviceCount: activeDeviceCount,
-        meterStats: meterStats.map(item => ({
-          meterId: item.meterId,
-          meterNo: item.meterNo,
-          meterName: item.meterNo,
-          totalConsumption: item.totalConsumption,
-          startTime: `${date} 00:00:00`,
-          endTime: `${date} 23:59:59`
-        }))
-      } satisfies StatsDisplayData;
-    })
-  );
+    rows.push({
+      timeKey: dayjs(date).format("YYYYMMDD"),
+      date,
+      totalConsumption: Number(totalConsumption.toFixed(2)),
+      deviceCount: activeDeviceCount,
+      meterStats: meterStats.map(item => ({
+        meterId: item.meterId,
+        meterNo: item.meterNo,
+        meterName: item.meterNo,
+        totalConsumption: item.totalConsumption,
+        startTime: `${date} 00:00:00`,
+        endTime: `${date} 23:59:59`
+      }))
+    });
+  }
 
   return rows;
 };
@@ -255,8 +232,33 @@ const columns = [
     label: "统计设备数量",
     prop: "deviceCount",
     minWidth: 120
+  },
+  {
+    label: "查看明细",
+    prop: "detail",
+    minWidth: 120,
+    cellRenderer: scope =>
+      h(
+        ElButton,
+        {
+          type: "primary",
+          size: "small",
+          onClick: () => showDetailDialog(scope.row)
+        },
+        { default: () => "查看明细" }
+      )
   }
 ];
+
+const showDetailDialog = (row: StatsDisplayData) => {
+  openMeterStatDetailDialog({
+    period: "day",
+    date: row.date,
+    totalConsumption: row.totalConsumption,
+    meterStats: row.meterStats || [],
+    meterType: form.meterType
+  });
+};
 
 // 初始化图表
 const initChart = () => {
@@ -368,7 +370,10 @@ const onSearch = async () => {
         dimension: "day" as StatsDimension,
         startTime: d0.replace(/-/g, ""),
         endTime: d1.replace(/-/g, ""),
-        ignoreRadio: 0 as const
+        ignoreRadio: 0 as const,
+        collectorIds: form.collectorIds?.length
+          ? [...form.collectorIds]
+          : undefined
       };
       const response =
         await simpleStatsApi.getEnergyStatisticsSummary(requestParams);
@@ -380,7 +385,21 @@ const onSearch = async () => {
         response as Record<string, any>
       );
       if (apiData) {
-        dataList.value = normalizeDailyDeviceCount(transformStatsData(apiData));
+        let rows = normalizeDailyDeviceCount(transformStatsData(apiData));
+        if (form.meterType) {
+          const { allowedIds, meterRows } = await loadScopedStatsMeters({
+            meterType: form.meterType,
+            collectorIds: form.collectorIds
+          });
+          if (meterRows.length === 0) {
+            rows = [];
+          } else if (allowedIds.size > 0) {
+            rows = normalizeDailyDeviceCount(
+              filterStatsByMeterIds(rows, allowedIds)
+            );
+          }
+        }
+        dataList.value = rows;
         updateChart(dataList.value);
       } else {
         const errorMsg = getEnergyStatisticsSummaryErrorMessage(
@@ -418,6 +437,7 @@ const resetForm = formEl => {
     dayjs().format("YYYY-MM-DD")
   ];
   form.meterType = "";
+  form.collectorIds = [];
   onSearch();
 };
 

@@ -659,10 +659,16 @@ async function loadOperationRecords() {
       pageSize: 20
     });
     const list = code === 0 ? (data?.list ?? []) : [];
-    operationActivities.value = list.map((row: Record<string, any>) => ({
-      content: row.description || row.method || "系统操作",
-      timestamp: formatTs(row.createTime) || "-"
-    }));
+    // getOperationLogsList 经 mapEladminOperationLog 后字段为 summary/module/operatingTime/username
+    operationActivities.value = list.map((row: Record<string, any>) => {
+      const action = row.summary || row.module || row.description || "系统操作";
+      const who = row.username ? String(row.username) : "";
+      return {
+        content: who ? `${who} · ${action}` : action,
+        timestamp:
+          formatTs(row.operatingTime || row.createTime || row.loginTime) || "-"
+      };
+    });
   } catch {
     operationActivities.value = [];
   } finally {

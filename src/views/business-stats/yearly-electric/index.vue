@@ -36,12 +36,15 @@
             <el-option label="多费率" value="multiRate" />
           </el-select>
         </el-form-item>
+        <el-form-item label="采集器" prop="collectorIds">
+          <CollectorMultiSelect v-model="form.collectorIds" />
+        </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
             :icon="Search"
             :loading="loading"
-            @click="onSearch"
+            @click="onSearch({ force: true })"
           >
             查询
           </el-button>
@@ -84,26 +87,41 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from "vue";
+import {
+  ref,
+  reactive,
+  onMounted,
+  onUnmounted,
+  nextTick,
+  computed,
+  h
+} from "vue";
 import * as echarts from "echarts";
 import { Search, Refresh, Download } from "@element-plus/icons-vue";
+import { ElButton } from "element-plus";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { message } from "@/utils/message";
 import { utils, writeFile } from "xlsx";
 import dayjs from "dayjs";
-import { getMeterList } from "@/api/meters";
+import { openMeterStatDetailDialog } from "../components/open-meter-stat-detail";
+import CollectorMultiSelect from "../components/CollectorMultiSelect.vue";
 import {
-  extractMeterRowsFromApiResponse,
+  chunkMeters,
+  filterStatsByMeterIds,
+  loadScopedStatsMeters
+} from "../components/stats-meter-utils";
+import {
+  METER_ENRICH_BATCH_SIZE,
   extractYearPowerValue,
-  getEnergyStatisticsSummary,
-  getEnergyStatisticsSummaryErrorMessage,
   getDeviceYearPower,
   resolveMeterRowDeviceId,
-  transformStatsData,
-  unwrapEnergyStatisticsSummaryResponse,
   type StatsDimension,
   type StatsDisplayData
 } from "@/api/business-stats";
+import {
+  hasEnergySummaryCache,
+  loadEnergySummaryDisplay
+} from "@/utils/energy-summary-cache";
 
 defineOptions({
   name: "BusinessStatsYearlyElectric"
@@ -117,21 +135,14 @@ let chartInstance: echarts.ECharts | null = null;
 const form = reactive({
   /** 默认同一年，减少请求；需多年对比时拉大范围（数据走 year-power 聚合） */
   yearRange: [dayjs().format("YYYY"), dayjs().format("YYYY")],
-  meterType: ""
+  meterType: "",
+  collectorIds: [] as number[]
 });
 
 const loading = ref(false);
 const dataList = ref<StatsDisplayData[]>([]);
-const YEAR_REQUEST_BATCH_SIZE = 5;
-const YEAR_SUMMARY_TIMEOUT_MS = 15000;
-
-const chunkMeters = (meters: Record<string, any>[], size: number) => {
-  const chunks: Record<string, any>[][] = [];
-  for (let i = 0; i < meters.length; i += size) {
-    chunks.push(meters.slice(i, i + size));
-  }
-  return chunks;
-};
+const YEAR_REQUEST_BATCH_SIZE = METER_ENRICH_BATCH_SIZE;
+const YEAR_SUMMARY_TIMEOUT_MS = 120000;
 
 // 计算年份范围
 const yearRangeComputed = computed(() => {
@@ -155,16 +166,10 @@ const loadYearlyStatsFromYearPower = async (): Promise<{
   failedCount: number;
 }> => {
   const [startYear, endYear] = yearRangeComputed.value;
-  const meterResponse = await getMeterList({
-    page: 1,
-    size: 1000,
-    meterType: form.meterType || undefined
+  const { meterRows } = await loadScopedStatsMeters({
+    meterType: form.meterType || undefined,
+    collectorIds: form.collectorIds
   });
-  const meterRows = extractMeterRowsFromApiResponse(
-    meterResponse as Record<string, any>
-  ).filter(
-    (item: Record<string, any>) => resolveMeterRowDeviceId(item) != null
-  );
 
   if (meterRows.length === 0) {
     return { rows: [], meterCount: 0, failedCount: 0 };
@@ -237,27 +242,34 @@ const loadYearlyStatsFromYearPower = async (): Promise<{
   return { rows, meterCount: meterRows.length, failedCount };
 };
 
-const loadYearlyStatsFromSummary = async (): Promise<StatsDisplayData[]> => {
+const loadYearlyStatsFromSummary = async (options?: {
+  force?: boolean;
+}): Promise<StatsDisplayData[]> => {
   const [startYear, endYear] = yearRangeComputed.value;
-  const requestParams = {
+  const params = {
     dimension: "year" as StatsDimension,
     startTime: String(startYear),
     endTime: String(endYear),
-    ignoreRadio: 0 as const
+    ignoreRadio: 0 as const,
+    collectorIds: form.collectorIds?.length ? [...form.collectorIds] : undefined
   };
-  const response = await getEnergyStatisticsSummary(
-    requestParams,
-    YEAR_SUMMARY_TIMEOUT_MS
-  );
-  const apiData = unwrapEnergyStatisticsSummaryResponse(
-    response as Record<string, any>
-  );
-  if (!apiData) {
-    throw new Error(
-      getEnergyStatisticsSummaryErrorMessage(response as Record<string, any>)
-    );
+  const { rows } = await loadEnergySummaryDisplay(params, {
+    force: options?.force,
+    timeoutMs: YEAR_SUMMARY_TIMEOUT_MS
+  });
+  if (form.meterType) {
+    const { allowedIds, meterRows } = await loadScopedStatsMeters({
+      meterType: form.meterType,
+      collectorIds: form.collectorIds
+    });
+    if (meterRows.length === 0) {
+      return [];
+    }
+    if (allowedIds.size > 0) {
+      return filterStatsByMeterIds(rows, allowedIds);
+    }
   }
-  return transformStatsData(apiData);
+  return rows;
 };
 
 const columns = [
@@ -276,8 +288,33 @@ const columns = [
     label: "统计设备数量",
     prop: "deviceCount",
     minWidth: 120
+  },
+  {
+    label: "查看明细",
+    prop: "detail",
+    minWidth: 120,
+    cellRenderer: scope =>
+      h(
+        ElButton,
+        {
+          type: "primary",
+          size: "small",
+          onClick: () => showDetailDialog(scope.row)
+        },
+        { default: () => "查看明细" }
+      )
   }
 ];
+
+const showDetailDialog = (row: StatsDisplayData) => {
+  openMeterStatDetailDialog({
+    period: "year",
+    date: row.date,
+    totalConsumption: row.totalConsumption,
+    meterStats: row.meterStats || [],
+    meterType: form.meterType
+  });
+};
 
 // 初始化图表
 const initChart = () => {
@@ -357,19 +394,29 @@ const updateChart = (data: StatsDisplayData[]) => {
 };
 
 // 搜索
-const onSearch = async () => {
-  loading.value = true;
+const onSearch = async (options?: { force?: boolean }) => {
+  const [startYear, endYear] = yearRangeComputed.value;
+  const summaryParams = {
+    dimension: "year" as StatsDimension,
+    startTime: String(startYear),
+    endTime: String(endYear),
+    ignoreRadio: 0 as const,
+    collectorIds: form.collectorIds?.length ? [...form.collectorIds] : undefined
+  };
+  const hasCache = !options?.force && hasEnergySummaryCache(summaryParams);
+
+  loading.value = !hasCache;
 
   try {
-    // 优先走汇总接口（单请求，更稳）；失败时回退逐设备接口
     try {
-      dataList.value = await loadYearlyStatsFromSummary();
+      dataList.value = await loadYearlyStatsFromSummary(options);
     } catch (summaryError) {
       const reason =
         summaryError instanceof Error
           ? summaryError.message
           : String(summaryError);
       console.info(`年汇总接口失败，回退逐设备统计: ${reason}`);
+      loading.value = true;
       const { rows, failedCount } = await loadYearlyStatsFromYearPower();
       dataList.value = rows;
       if (rows.length > 0 && failedCount > 0) {
@@ -381,13 +428,12 @@ const onSearch = async () => {
 
     if (dataList.value.length === 0) {
       message("该时间段暂无电用量年统计数据", { type: "info" });
-    } else {
+    } else if (!hasCache || options?.force) {
       message("查询成功", { type: "success" });
     }
 
     updateChart(dataList.value);
   } catch (error) {
-    // 网络或系统错误
     console.error("查询电用量年统计失败:", error);
 
     let errorMsg = "查询失败，请重试";
@@ -411,7 +457,8 @@ const resetForm = formEl => {
   formEl.resetFields();
   form.yearRange = [dayjs().format("YYYY"), dayjs().format("YYYY")];
   form.meterType = "";
-  onSearch();
+  form.collectorIds = [];
+  onSearch({ force: true });
 };
 
 // 导出Excel

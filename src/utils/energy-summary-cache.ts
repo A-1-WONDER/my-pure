@@ -29,7 +29,13 @@ export function buildEnergySummaryCacheKey(
   params: EnergyStatsQueryParams
 ): string {
   const ignoreRadio = params.ignoreRadio ?? 0;
-  return `${params.dimension}|${params.startTime}|${params.endTime}|${ignoreRadio}`;
+  const collectors = params.collectorIds?.length
+    ? [...params.collectorIds]
+        .map(Number)
+        .sort((a, b) => a - b)
+        .join(",")
+    : "all";
+  return `${params.dimension}|${params.startTime}|${params.endTime}|${ignoreRadio}|c:${collectors}`;
 }
 
 function isFresh(entry: CacheEntry, dimension: StatsDimension): boolean {

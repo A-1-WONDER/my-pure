@@ -132,6 +132,20 @@ const COLLECTOR_ROWS: AlarmRow[] = [
   }
 ];
 
+/** 已接入后端评估逻辑的报警项，其余仅展示开关预留 */
+const WIRED_ALARM_KEYS = new Set([
+  "power_off",
+  "metering_fault",
+  "meter_comm_fail",
+  "continuous_low_usage",
+  "continuous_high_usage",
+  "collector_long_offline"
+]);
+
+function isAlarmWired(key: string) {
+  return WIRED_ALARM_KEYS.has(key);
+}
+
 const TEMP_OPTIONS = [60, 70, 80, 90, 100, 110, 120];
 
 const emailRule = /^(?:[a-zA-Z0-9_+\-.]+)@(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}$/;
@@ -327,7 +341,7 @@ onMounted(() => {
       <div>
         <h2 class="alarm-sys__title">系统报警设置</h2>
         <p class="alarm-sys__subtitle">
-          配置管理员接收邮箱，以及电能表、采集器各类报警的启用与邮件通知。
+          配置管理员接收邮箱，以及电能表、采集器各类报警的启用与邮件通知。标注「未开通」的项尚未接入评估逻辑，开关仅作预留。
         </p>
         <p v-if="lastSyncedHint" class="alarm-sys__sync">
           {{ lastSyncedHint }}
@@ -384,7 +398,18 @@ onMounted(() => {
       <div class="alarm-list">
         <div v-for="row in METER_ROWS" :key="row.key" class="alarm-row">
           <div class="alarm-row__body">
-            <div class="alarm-row__title">{{ row.title }}</div>
+            <div class="alarm-row__title">
+              <span>{{ row.title }}</span>
+              <el-tag
+                v-if="!isAlarmWired(row.key)"
+                class="alarm-row__tag"
+                size="small"
+                type="info"
+                effect="plain"
+              >
+                未开通
+              </el-tag>
+            </div>
             <div class="alarm-row__desc">{{ row.desc }}</div>
             <div v-if="row.hasTemp" class="alarm-row__extra">
               <span class="alarm-row__extra-label">温度阈值</span>
@@ -430,7 +455,18 @@ onMounted(() => {
       <div class="alarm-list">
         <div v-for="row in COLLECTOR_ROWS" :key="row.key" class="alarm-row">
           <div class="alarm-row__body">
-            <div class="alarm-row__title">{{ row.title }}</div>
+            <div class="alarm-row__title">
+              <span>{{ row.title }}</span>
+              <el-tag
+                v-if="!isAlarmWired(row.key)"
+                class="alarm-row__tag"
+                size="small"
+                type="info"
+                effect="plain"
+              >
+                未开通
+              </el-tag>
+            </div>
             <div class="alarm-row__desc">{{ row.desc }}</div>
           </div>
           <div class="alarm-row__actions">
@@ -595,10 +631,18 @@ onMounted(() => {
 }
 
 .alarm-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
   margin-bottom: 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+}
+
+.alarm-row__tag {
+  font-weight: 400;
 }
 
 .alarm-row__desc {

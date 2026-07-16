@@ -36,6 +36,9 @@
             <el-option label="多费率" value="multiRate" />
           </el-select>
         </el-form-item>
+        <el-form-item label="采集器" prop="collectorIds">
+          <CollectorMultiSelect v-model="form.collectorIds" />
+        </el-form-item>
         <el-form-item>
           <el-button
             type="primary"
@@ -84,16 +87,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, reactive, onMounted, onUnmounted, nextTick, h } from "vue";
 import * as echarts from "echarts";
 import { Search, Refresh, Download } from "@element-plus/icons-vue";
+import { ElButton } from "element-plus";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { message } from "@/utils/message";
 import { utils, writeFile } from "xlsx";
 import dayjs from "dayjs";
-import { getMeterList } from "@/api/meters";
+import { openMeterStatDetailDialog } from "../components/open-meter-stat-detail";
+import CollectorMultiSelect from "../components/CollectorMultiSelect.vue";
 import {
-  extractMeterRowsFromApiResponse,
+  chunkMeters,
+  filterStatsByMeterIds,
+  loadScopedStatsMeters
+} from "../components/stats-meter-utils";
+import {
+  METER_ENRICH_BATCH_SIZE,
   extractMonthPowerValueFromResponse,
   getDeviceMonthPower,
   resolveMeterRowDeviceId,
@@ -120,46 +130,15 @@ const form = reactive({
     dayjs().subtract(3, "month").format("YYYY-MM"),
     dayjs().format("YYYY-MM")
   ] as string[],
-  meterType: ""
+  meterType: "",
+  collectorIds: [] as number[]
 });
 
 const loading = ref(false);
 const dataList = ref<StatsDisplayData[]>([]);
-/** 逐设备回退时每批并发数，避免压垮外部接口 */
-const MONTH_REQUEST_BATCH_SIZE = 5;
+/** 逐设备回退时每批并发数 */
+const MONTH_REQUEST_BATCH_SIZE = METER_ENRICH_BATCH_SIZE;
 const MONTH_SUMMARY_TIMEOUT_MS = 120000;
-
-const chunkMeters = (meters: Record<string, any>[], size: number) => {
-  const chunks: Record<string, any>[][] = [];
-  for (let i = 0; i < meters.length; i += size) {
-    chunks.push(meters.slice(i, i + size));
-  }
-  return chunks;
-};
-
-const filterStatsByMeterIds = (
-  rows: StatsDisplayData[],
-  allowedIds: Set<number>
-): StatsDisplayData[] => {
-  if (!allowedIds.size) return rows;
-  return rows
-    .map(row => {
-      const meterStats = (row.meterStats || []).filter(item =>
-        allowedIds.has(Number(item.meterId))
-      );
-      const totalConsumption = meterStats.reduce(
-        (sum, item) => sum + Number(item.totalConsumption || 0),
-        0
-      );
-      return {
-        ...row,
-        meterStats,
-        totalConsumption: Number(totalConsumption.toFixed(2)),
-        deviceCount: meterStats.length
-      };
-    })
-    .filter(row => row.meterStats.length > 0 || row.totalConsumption > 0);
-};
 
 const normalizeMonthRangeEnds = (a: string, b: string): [string, string] => {
   const da = dayjs(`${a}-01`);
@@ -189,16 +168,10 @@ const loadMonthlyStatsFromMonthPower = async () => {
         ];
   const yearMonths = listYearMonthsInclusive(range[0], range[1]);
 
-  const meterResponse = await getMeterList({
-    page: 1,
-    size: 1000,
-    meterType: form.meterType || undefined
+  const { meterRows } = await loadScopedStatsMeters({
+    meterType: form.meterType || undefined,
+    collectorIds: form.collectorIds
   });
-  const meterRows = extractMeterRowsFromApiResponse(
-    meterResponse as Record<string, any>
-  ).filter(
-    (item: Record<string, any>) => resolveMeterRowDeviceId(item) != null
-  );
 
   if (meterRows.length === 0) {
     return [];
@@ -287,7 +260,8 @@ const loadMonthlyStatsFromSummary = async (options?: {
     dimension: "month" as StatsDimension,
     startTime: dayjs(`${sYm}-01`).format("YYYYMM"),
     endTime: dayjs(`${eYm}-01`).format("YYYYMM"),
-    ignoreRadio: 0 as const
+    ignoreRadio: 0 as const,
+    collectorIds: form.collectorIds?.length ? [...form.collectorIds] : undefined
   };
 
   const { rows } = await loadEnergySummaryDisplay(params, {
@@ -295,21 +269,18 @@ const loadMonthlyStatsFromSummary = async (options?: {
     timeoutMs: MONTH_SUMMARY_TIMEOUT_MS
   });
 
+  // 采集器已由后端过滤；电表类型仍前端收窄
   if (form.meterType) {
-    const meterResponse = await getMeterList({
-      page: 1,
-      size: 1000,
-      meterType: form.meterType
+    const { allowedIds, meterRows } = await loadScopedStatsMeters({
+      meterType: form.meterType,
+      collectorIds: form.collectorIds
     });
-    const filteredMeters = extractMeterRowsFromApiResponse(
-      meterResponse as Record<string, any>
-    );
-    const allowedIds = new Set(
-      filteredMeters
-        .map((m: Record<string, any>) => resolveMeterRowDeviceId(m))
-        .filter((id): id is number => id != null)
-    );
-    return filterStatsByMeterIds(rows, allowedIds);
+    if (meterRows.length === 0) {
+      return [];
+    }
+    if (allowedIds.size > 0) {
+      return filterStatsByMeterIds(rows, allowedIds);
+    }
   }
   return rows;
 };
@@ -330,8 +301,33 @@ const columns = [
     label: "统计设备数量",
     prop: "deviceCount",
     minWidth: 120
+  },
+  {
+    label: "查看明细",
+    prop: "detail",
+    minWidth: 120,
+    cellRenderer: scope =>
+      h(
+        ElButton,
+        {
+          type: "primary",
+          size: "small",
+          onClick: () => showDetailDialog(scope.row)
+        },
+        { default: () => "查看明细" }
+      )
   }
 ];
+
+const showDetailDialog = (row: StatsDisplayData) => {
+  openMeterStatDetailDialog({
+    period: "month",
+    date: row.date,
+    totalConsumption: row.totalConsumption,
+    meterStats: row.meterStats || [],
+    meterType: form.meterType
+  });
+};
 
 // 初始化图表
 const initChart = () => {
@@ -422,7 +418,8 @@ const onSearch = async (options?: { force?: boolean }) => {
     dimension: "month" as StatsDimension,
     startTime: dayjs(`${sYm}-01`).format("YYYYMM"),
     endTime: dayjs(`${eYm}-01`).format("YYYYMM"),
-    ignoreRadio: 0 as const
+    ignoreRadio: 0 as const,
+    collectorIds: form.collectorIds?.length ? [...form.collectorIds] : undefined
   };
   const hasCache = !options?.force && hasEnergySummaryCache(summaryParams);
 
@@ -476,6 +473,7 @@ const resetForm = formEl => {
     dayjs().format("YYYY-MM")
   ];
   form.meterType = "";
+  form.collectorIds = [];
   onSearch({ force: true });
 };
 

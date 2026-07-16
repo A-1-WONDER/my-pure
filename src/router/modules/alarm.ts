@@ -30,7 +30,9 @@ export default {
       meta: {
         title: $t("menus.pureAlarmRuleConfig"),
         icon: "ri:settings-3-line",
-        keepAlive: true
+        keepAlive: true,
+        // 暂时不在侧栏展示；路由仍保留，直链可访问
+        showLink: false
       }
     },
     {

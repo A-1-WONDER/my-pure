@@ -22,6 +22,8 @@ export interface EnergyStatsQueryParams {
   startTime: string;
   endTime: string;
   ignoreRadio?: 0 | 1; // 0：不忽略互感器变比，1：忽略互感器变比
+  /** 可选：采集器 id 列表，后端仅汇总这些采集器下的电表 */
+  collectorIds?: number[];
 }
 
 // 电表统计项类型
@@ -125,6 +127,15 @@ export interface DeviceYearPowerResponse {
 
 /** 年统计单设备接口通常较慢，单独放宽超时 */
 const DEVICE_YEAR_POWER_TIMEOUT_MS = 30000;
+
+/** 用量统计页一次加载的电表上限（50 表场景留足余量） */
+export const STATS_METER_PAGE_SIZE = 100;
+
+/** 日用电批量接口单次 deviceIds 上限（与后端一致） */
+export const DAY_POWER_BATCH_SIZE = 100;
+
+/** 明细弹窗补在线状态、月年回退时的并发批大小 */
+export const METER_ENRICH_BATCH_SIZE = 8;
 
 /**
  * 从电表分页接口响应中取行列表（axios 已解包一层，故常见顶层 content / list）
@@ -319,17 +330,17 @@ export const getEnergyStatisticsSummary = (
   params: EnergyStatsQueryParams,
   timeoutMs = ENERGY_SUMMARY_TIMEOUT_MS
 ) => {
-  // console.log("【business-stats.ts】获取用电量统计汇总数据");
-  // console.log("【business-stats.ts】请求参数:", params);
-  // console.log(
-  //   "【business-stats.ts】请求URL: /api/external/energy-statistics/summary"
-  // );
+  const { collectorIds, ...rest } = params;
+  const query: Record<string, unknown> = { ...rest };
+  if (collectorIds?.length) {
+    query.collectorIds = collectorIds.join(",");
+  }
 
   return http.request<Result<EnergyStatisticsSummaryDto>>(
     "get",
     "/api/external/energy-statistics/summary",
     {
-      params,
+      params: query,
       timeout: timeoutMs
     }
   );
@@ -348,6 +359,22 @@ export const getDeviceDayPower = (deviceId: number, date: string) => {
       ...devicePowerHttpConfig
     }
   );
+};
+
+/**
+ * 批量获取设备日用电量（一日期多表一次请求，内部复用单表 Redis 缓存）
+ * POST /api/external/energy-statistics/devices/day-power/batch
+ */
+export const getDeviceDayPowerBatch = (deviceIds: number[], date: string) => {
+  return http.request<{
+    date?: string;
+    count?: number;
+    items?: Record<string, unknown>[];
+  }>("post", "/api/external/energy-statistics/devices/day-power/batch", {
+    data: { deviceIds, date },
+    timeout: 60000,
+    ...devicePowerHttpConfig
+  });
 };
 
 /**
