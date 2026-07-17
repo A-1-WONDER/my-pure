@@ -13,6 +13,8 @@ import {
 export type CollectorOption = {
   id: number;
   label: string;
+  /** 采集器安装位置（明细「通讯地址」用） */
+  installAddress?: string;
 };
 
 /** 将数组按固定大小切块（用于批量日用电等） */
@@ -38,7 +40,7 @@ export async function loadStatsMeterRows(meterType?: string) {
   );
 }
 
-/** 采集器下拉选项（多选筛选用） */
+/** 采集器下拉选项（多选筛选用；含安装位置供明细通讯地址） */
 export async function loadCollectorOptions(): Promise<CollectorOption[]> {
   const res = (await getCollectorList({
     page: 1,
@@ -58,7 +60,14 @@ export async function loadCollectorOptions(): Promise<CollectorOption[]> {
         item.collectorNo ||
         item.code ||
         `采集器${id}`;
-      return { id, label: String(label) };
+      const installAddress = String(
+        item.installAddress ?? item.location ?? ""
+      ).trim();
+      return {
+        id,
+        label: String(label),
+        installAddress: installAddress || undefined
+      };
     })
     .filter((item): item is CollectorOption => item != null);
 }
@@ -133,6 +142,34 @@ export function buildMeterArchiveMap(
     if (id != null) map.set(id, row);
   }
   return map;
+}
+
+/** 额外按表号索引，便于小时统计 mid 映射失败时仍能对上档案 */
+export function buildMeterArchiveByNoMap(
+  meterRows: Record<string, any>[]
+): Map<string, Record<string, any>> {
+  const map = new Map<string, Record<string, any>>();
+  for (const row of meterRows) {
+    const no = String(row.meterNo ?? "").trim();
+    if (no) map.set(no, row);
+  }
+  return map;
+}
+
+/** 采集器列展示：名称优先，编号次之 */
+export function formatCollectorDisplay(row: {
+  collectorName?: string | null;
+  collectorNo?: string | null;
+  collectorId?: number | string | null;
+}): string {
+  const name = String(row.collectorName ?? "").trim();
+  if (name) return name;
+  const no = String(row.collectorNo ?? "").trim();
+  if (no) return no;
+  if (row.collectorId != null && row.collectorId !== "") {
+    return `采集器${row.collectorId}`;
+  }
+  return "-";
 }
 
 function extractBatchDayPowerItems(

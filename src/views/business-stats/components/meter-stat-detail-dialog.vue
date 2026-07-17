@@ -112,10 +112,19 @@ import {
   type MeterStatDetailPeriod
 } from "./meter-stat-period";
 import {
+  buildMeterArchiveByNoMap,
   buildMeterArchiveMap,
+  formatCollectorDisplay,
+  loadCollectorOptions,
   loadStatsMeterRows,
   runInBatches
 } from "./stats-meter-utils";
+import {
+  buildDetailRowFromMeterStat,
+  mergeDetailRowsByMeterId,
+  resolveDetailArchive
+} from "./meter-stat-detail-enrich";
+import { formatMeterEnergyUnit } from "@/views/monitor2/utils/meter-display";
 
 defineOptions({
   name: "MeterStatDetailDialog"
@@ -171,6 +180,11 @@ const dataList = ref([]);
 const filteredAllList = ref<Record<string, any>[]>([]);
 /** 会话内复用电表档案，避免筛选/翻页重复拉列表 */
 let meterArchiveMapCache: Map<number, Record<string, any>> | null = null;
+let meterArchiveByNoCache: Map<string, Record<string, any>> | null = null;
+let collectorByIdCache: Map<
+  number,
+  { label: string; installAddress?: string }
+> | null = null;
 let meterArchiveCacheKey = "";
 
 const statusMap = {
@@ -213,72 +227,6 @@ const extractResponsePayload = (response: Record<string, any>) => {
   return response?.data?.data ?? response?.data ?? response;
 };
 
-const resolveMeterId = (meterStat: Record<string, any>) => {
-  if (meterStat?.meterId !== null && meterStat?.meterId !== undefined) {
-    return Number(meterStat.meterId);
-  }
-
-  const meterName = String(meterStat?.meterName || "");
-  const meterNo = String(meterStat?.meterNo || "");
-  const candidates = [meterName, meterNo];
-
-  for (const value of candidates) {
-    const match = value.match(/(?:mid:|meterId:|deviceId:)?(\d+)/i);
-    if (match) return Number(match[1]);
-  }
-
-  return undefined;
-};
-
-const mergeRowsByMeterId = (rows: Record<string, any>[]) => {
-  const mergedMap = new Map<string | number, Record<string, any>>();
-
-  rows.forEach(row => {
-    const key = row.id ?? row.meterNo ?? row.meterName;
-    if (key === null || key === undefined || key === "") return;
-
-    if (!mergedMap.has(key)) {
-      mergedMap.set(key, { ...row });
-      return;
-    }
-
-    const existing = mergedMap.get(key);
-    existing.totalConsumption =
-      Number(existing.totalConsumption || 0) +
-      Number(row.totalConsumption || 0);
-
-    if (!existing.meterNo && row.meterNo) existing.meterNo = row.meterNo;
-    if (!existing.collectorId && row.collectorId)
-      existing.collectorId = row.collectorId;
-    if (!existing.collectorName && row.collectorName)
-      existing.collectorName = row.collectorName;
-    if (!existing.collectorNo && row.collectorNo)
-      existing.collectorNo = row.collectorNo;
-    if (!existing.status && row.status) existing.status = row.status;
-    if (!existing.laststatus && row.laststatus)
-      existing.laststatus = row.laststatus;
-    if (!existing.signalStrength && row.signalStrength)
-      existing.signalStrength = row.signalStrength;
-    if (!existing.meterAddress && row.meterAddress)
-      existing.meterAddress = row.meterAddress;
-    if (!existing.userId && row.userId) existing.userId = row.userId;
-    if (!existing.userInfo && row.userInfo) existing.userInfo = row.userInfo;
-    if (!existing.meterType && row.meterType)
-      existing.meterType = row.meterType;
-    if (!existing.remainingAmount && row.remainingAmount)
-      existing.remainingAmount = row.remainingAmount;
-    if (!existing.voltage && row.voltage) existing.voltage = row.voltage;
-    if (!existing.current && row.current) existing.current = row.current;
-    if (!existing.temperature && row.temperature)
-      existing.temperature = row.temperature;
-  });
-
-  return Array.from(mergedMap.values()).map(item => ({
-    ...item,
-    totalConsumption: Number(Number(item.totalConsumption || 0).toFixed(2))
-  }));
-};
-
 const sourceMeterStats = computed(() => props.meterStats || []);
 
 const pagination = reactive<PaginationProps>({
@@ -305,12 +253,7 @@ const columns = computed(() => [
     prop: "collectorId",
     minWidth: 100,
     cellRenderer: scope => {
-      const displayText = scope.row.collectorNo
-        ? scope.row.collectorNo
-        : scope.row.collectorName
-          ? scope.row.collectorName
-          : `采集器${scope.row.collectorId || ""}`;
-      return h("span", null, () => displayText);
+      return h("span", null, formatCollectorDisplay(scope.row));
     }
   },
   {
@@ -338,16 +281,11 @@ const columns = computed(() => [
     minWidth: 150
   },
   {
-    label: "用户",
-    prop: "userId",
-    minWidth: 100,
+    label: "用能单位",
+    prop: "collectorName",
+    minWidth: 120,
     cellRenderer: scope => {
-      const displayText = scope.row.userInfo?.userName
-        ? scope.row.userInfo.userName
-        : scope.row.userName
-          ? scope.row.userName
-          : `用户${scope.row.userId || ""}`;
-      return h("span", null, () => displayText);
+      return h("span", null, formatMeterEnergyUnit(scope.row));
     }
   },
   {
@@ -394,53 +332,63 @@ const columns = computed(() => [
 
 async function loadMeterArchiveMap() {
   const cacheKey = props.meterType || "__all__";
-  if (meterArchiveMapCache && meterArchiveCacheKey === cacheKey) {
-    return meterArchiveMapCache;
+  if (
+    meterArchiveMapCache &&
+    meterArchiveByNoCache &&
+    collectorByIdCache &&
+    meterArchiveCacheKey === cacheKey
+  ) {
+    return {
+      byId: meterArchiveMapCache,
+      byNo: meterArchiveByNoCache,
+      collectorById: collectorByIdCache
+    };
   }
-  const rows = await loadStatsMeterRows(props.meterType || undefined);
+
+  // 档案/采集器失败不应导致明细整表空白
+  let rows: Record<string, any>[] = [];
+  try {
+    rows = await loadStatsMeterRows(props.meterType || undefined);
+  } catch (error) {
+    console.warn("加载电表档案失败，明细将仅展示统计原始字段:", error);
+  }
+
+  let collectorById = new Map<
+    number,
+    { label: string; installAddress?: string }
+  >();
+  try {
+    const collectorOptions = await loadCollectorOptions();
+    collectorById = new Map(
+      collectorOptions.map(item => [
+        item.id,
+        { label: item.label, installAddress: item.installAddress }
+      ])
+    );
+  } catch (error) {
+    console.warn("加载采集器列表失败，采集器列可能缺少名称:", error);
+  }
+
   meterArchiveMapCache = buildMeterArchiveMap(rows);
+  meterArchiveByNoCache = buildMeterArchiveByNoMap(rows);
+  collectorByIdCache = collectorById;
   meterArchiveCacheKey = cacheKey;
-  return meterArchiveMapCache;
+  return {
+    byId: meterArchiveMapCache,
+    byNo: meterArchiveByNoCache,
+    collectorById: collectorByIdCache
+  };
 }
 
 function buildRowFromMeterStat(
   meterStat: MeterStatItem,
-  archive?: Record<string, any>
+  archive?: Record<string, any>,
+  collectorById?: Map<number, { label: string; installAddress?: string }>
 ) {
-  const resolvedMeterId = resolveMeterId(meterStat as Record<string, any>);
-  const collectorId = archive?.collectorId;
-  const collectorName =
-    archive?.collectorName ||
-    archive?.collectorNo ||
-    (collectorId != null ? `采集器${collectorId}` : undefined);
-
-  return {
-    id: resolvedMeterId,
-    meterNo:
-      meterStat.meterNo ||
-      archive?.meterNo ||
-      (resolvedMeterId != null ? String(resolvedMeterId) : undefined),
-    meterName: /^mid:\d+$/i.test(String(meterStat.meterName || ""))
-      ? meterStat.meterNo || archive?.meterNo
-      : meterStat.meterName || archive?.meterName,
-    collectorId,
-    collectorName,
-    collectorNo: archive?.collectorNo,
-    status: archive?.laststatus ?? archive?.lastStatus ?? archive?.status,
-    laststatus: archive?.laststatus ?? archive?.lastStatus,
-    signalStrength: archive?.signalStrength,
-    meterAddress:
-      archive?.meterAddress || archive?.meterNo || meterStat.meterNo,
-    userId: archive?.userId,
-    userInfo: archive?.userInfo,
-    userName: archive?.userName,
-    meterType: archive?.meterType || props.meterType,
-    remark: periodMeta.value.buildRemark(props.date, props.hour),
-    totalConsumption: meterStat.totalConsumption,
-    voltage: archive?.voltage,
-    current: archive?.current,
-    temperature: archive?.temperature
-  };
+  return buildDetailRowFromMeterStat(meterStat, archive, collectorById, {
+    meterType: props.meterType,
+    remark: periodMeta.value.buildRemark(props.date, props.hour)
+  });
 }
 
 function applyFilters(rows: Record<string, any>[]) {
@@ -532,12 +480,18 @@ const onSearch = async () => {
   loading.value = true;
 
   try {
-    const archiveMap = await loadMeterArchiveMap();
-    let rows = mergeRowsByMeterId(
-      sourceMeterStats.value.map(meterStat => {
-        const id = resolveMeterId(meterStat as Record<string, any>);
-        const archive = id != null ? archiveMap.get(id) : undefined;
-        return buildRowFromMeterStat(meterStat, archive);
+    const source = sourceMeterStats.value || [];
+    if (!source.length) {
+      applyPagination([]);
+      message("该时段暂无电表明细", { type: "info" });
+      return;
+    }
+
+    const { byId, byNo, collectorById } = await loadMeterArchiveMap();
+    let rows = mergeDetailRowsByMeterId(
+      source.map(meterStat => {
+        const archive = resolveDetailArchive(meterStat, byId, byNo);
+        return buildRowFromMeterStat(meterStat, archive, collectorById);
       })
     );
 
@@ -546,12 +500,24 @@ const onSearch = async () => {
 
     // 后台补在线状态，不阻塞首屏
     void enrichLastStatus(rows).then(() => {
-      rows = mergeRowsByMeterId(rows);
+      rows = mergeDetailRowsByMeterId(rows);
       applyPagination(applyFilters(rows));
     });
   } catch (error) {
     console.error("查询失败:", error);
-    message("查询失败，请重试", { type: "error" });
+    // 兜底：档案异常时仍展示原始统计行，避免整表空白
+    try {
+      const fallbackRows = mergeDetailRowsByMeterId(
+        (sourceMeterStats.value || []).map(meterStat =>
+          buildRowFromMeterStat(meterStat)
+        )
+      );
+      applyPagination(applyFilters(fallbackRows));
+      message("明细已展示（档案信息加载失败）", { type: "warning" });
+    } catch (fallbackError) {
+      console.error("明细兜底失败:", fallbackError);
+      message("查询失败，请重试", { type: "error" });
+    }
   } finally {
     loading.value = false;
   }
@@ -595,7 +561,7 @@ const exportExcel = () => {
       "采集器",
       "在线状态",
       "通讯地址",
-      "用户",
+      "用能单位",
       "电表类型",
       "备注",
       periodMeta.value.exportConsumptionLabel,
@@ -603,19 +569,11 @@ const exportExcel = () => {
     ];
 
     const body = rows.map(item => {
-      const collectorText = item.collectorNo
-        ? item.collectorNo
-        : item.collectorName
-          ? item.collectorName
-          : `采集器${item.collectorId || ""}`;
+      const collectorText = formatCollectorDisplay(item);
       const statusText = getStatusDisplay(
         item.laststatus ?? item.lastStatus ?? item.status
       ).text;
-      const userText = item.userInfo?.userName
-        ? item.userInfo.userName
-        : item.userName
-          ? item.userName
-          : `用户${item.userId || ""}`;
+      const userText = formatMeterEnergyUnit(item);
       const otherParts: string[] = [];
       if (item.voltage) otherParts.push(`${item.voltage}V`);
       if (item.current) otherParts.push(`${item.current}A`);

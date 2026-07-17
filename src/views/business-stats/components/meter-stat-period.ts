@@ -19,10 +19,15 @@ export const METER_STAT_PERIOD_META: Record<
     exportConsumptionLabel: "本小时用电量(kWh)",
     sheetName: "小时用电明细",
     filePrefix: "小时用电明细",
+    // date 可能已是 formatTimeKey 的「yyyy-MM-dd HH:00」，避免再拼一次小时
     buildRemark: (date, hour) =>
-      `${date} ${String(hour ?? 0).padStart(2, "0")}:00 时段统计`,
+      /\d{1,2}:\d{2}/.test(String(date || ""))
+        ? `${date} 时段统计`
+        : `${date} ${String(hour ?? 0).padStart(2, "0")}:00 时段统计`,
     buildTitle: (date, hour) =>
-      `电表明细 - ${date} ${String(hour ?? 0).padStart(2, "0")}:00`
+      /\d{1,2}:\d{2}/.test(String(date || ""))
+        ? `电表明细 - ${date}`
+        : `电表明细 - ${date} ${String(hour ?? 0).padStart(2, "0")}:00`
   },
   day: {
     consumptionLabel: "本日用电量",

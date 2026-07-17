@@ -17,7 +17,9 @@
               </div>
             </div>
             <div class="p-3 border rounded">
-              <div class="label text-gray-500 text-sm mb-1">用户名称</div>
+              <div class="label text-gray-500 text-sm mb-1">
+                {{ isElectric ? "用能单位" : "用户名称" }}
+              </div>
               <div class="value font-medium">
                 {{ displayUserCell }}
               </div>
@@ -89,59 +91,128 @@
 
         <el-tab-pane label="用量统计" name="statistics" lazy>
           <div class="p-4">
-            <div class="mb-4">
-              <h4 class="text-md font-medium mb-2">月度用量统计</h4>
-              <div class="grid grid-cols-2 gap-4">
-                <div class="p-3 border rounded text-center">
-                  <div class="text-gray-500 text-sm mb-1">本月用量</div>
-                  <div class="text-2xl font-bold text-blue-600">
-                    {{ formatPower(monthlyStats.currentMonthPower) }}
-                    {{ config.unit }}
-                  </div>
-                  <div class="mt-1 text-xs text-gray-400">
-                    {{ monthlyStats.currentMonthLabel }}
-                  </div>
-                </div>
-                <div class="p-3 border rounded text-center">
-                  <div class="text-gray-500 text-sm mb-1">上月用量</div>
-                  <div class="text-2xl font-bold text-green-600">
-                    {{ formatPower(monthlyStats.previousMonthPower) }}
-                    {{ config.unit }}
-                  </div>
-                  <div class="mt-1 text-xs text-gray-400">
-                    {{ monthlyStats.previousMonthLabel }}
-                  </div>
-                </div>
+            <template v-if="!isElectric">
+              <div class="py-8 text-center text-sm text-gray-500">
+                当前仅电表接入时/日/月/年能耗统计
               </div>
-            </div>
-
-            <div class="mb-4">
-              <div class="mb-2 flex items-center justify-between">
-                <h4 class="text-md font-medium">用量趋势</h4>
-                <span v-if="monthlyStats.loading" class="text-xs text-gray-400">
-                  加载中...
+            </template>
+            <template v-else>
+              <div class="mb-3 flex flex-wrap items-center gap-2">
+                <el-date-picker
+                  v-model="usageQueryDate"
+                  type="date"
+                  placeholder="选择日期"
+                  value-format="YYYY-MM-DD"
+                  :clearable="false"
+                  class="w-[170px]!"
+                />
+                <el-button
+                  type="primary"
+                  :loading="usageSummaryLoading || usageSeriesLoading"
+                  @click="onUsageQuery"
+                >
+                  查询
+                </el-button>
+                <el-button
+                  type="success"
+                  :loading="usageExporting"
+                  @click="exportUsageExcel"
+                >
+                  导出为Excel
+                </el-button>
+                <span class="text-xs text-gray-400">
+                  <template v-if="usageSummaryLoading">加载中...</template>
+                  <template v-else-if="usageSummaryFetchedAt">
+                    更新于 {{ usageSummaryFetchedAt }}
+                  </template>
                 </span>
               </div>
-              <div class="rounded border bg-gray-50 p-4">
+
+              <div class="mb-2 flex items-center justify-between">
+                <h4 class="text-md font-medium">用量摘要</h4>
+              </div>
+              <div
+                v-if="usageSummaryError"
+                class="mb-3 text-xs text-orange-500"
+              >
+                {{ usageSummaryError }}
+              </div>
+              <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded border p-3 text-center">
+                  <div class="mb-1 text-xs text-gray-500">此时</div>
+                  <div class="text-xl font-bold text-blue-600">
+                    {{ formatPower(usageSummary.currentHourPower) }}
+                    {{ config.unit }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-400">
+                    {{ usageSummary.currentHourLabel }}
+                  </div>
+                </div>
+                <div class="rounded border p-3 text-center">
+                  <div class="mb-1 text-xs text-gray-500">当日</div>
+                  <div class="text-xl font-bold text-cyan-600">
+                    {{ formatPower(usageSummary.todayPower) }}
+                    {{ config.unit }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-400">
+                    {{ usageSummary.todayLabel }}
+                  </div>
+                </div>
+                <div class="rounded border p-3 text-center">
+                  <div class="mb-1 text-xs text-gray-500">当月</div>
+                  <div class="text-xl font-bold text-green-600">
+                    {{ formatPower(usageSummary.currentMonthPower) }}
+                    {{ config.unit }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-400">
+                    {{ usageSummary.currentMonthLabel }}
+                  </div>
+                </div>
+                <div class="rounded border p-3 text-center">
+                  <div class="mb-1 text-xs text-gray-500">当年</div>
+                  <div class="text-xl font-bold text-purple-600">
+                    {{ formatPower(usageSummary.currentYearPower) }}
+                    {{ config.unit }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-400">
+                    {{ usageSummary.currentYearLabel }}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="mb-2 flex flex-wrap items-center justify-between gap-2"
+              >
+                <h4 class="text-md font-medium">用量趋势</h4>
+                <el-radio-group
+                  v-model="usageDimension"
+                  size="small"
+                  @change="onUsageDimensionChange"
+                >
+                  <el-radio-button value="hour">时</el-radio-button>
+                  <el-radio-button value="day">日</el-radio-button>
+                  <el-radio-button value="month">月</el-radio-button>
+                  <el-radio-button value="year">年</el-radio-button>
+                </el-radio-group>
+              </div>
+              <div class="relative rounded border bg-gray-50 p-4">
                 <div
-                  v-if="monthlyStats.error"
+                  v-if="usageSeriesError"
                   class="py-8 text-center text-sm text-red-500"
                 >
-                  {{ monthlyStats.error }}
+                  {{ usageSeriesError }}
                 </div>
-                <div
-                  v-else-if="!isElectric"
-                  class="py-8 text-center text-sm text-gray-500"
-                >
-                  当前仅电表接入月统计接口
-                </div>
-                <div
-                  v-else
-                  ref="monthTrendRef"
-                  style="width: 100%; height: 260px"
-                />
+                <template v-else>
+                  <div
+                    v-if="usageSeriesLoading"
+                    class="absolute inset-0 z-10 flex items-center justify-center bg-gray-50/80 text-sm text-gray-400"
+                  >
+                    曲线加载中...
+                  </div>
+                  <div ref="usageTrendRef" style="width: 100%; height: 260px" />
+                </template>
               </div>
-            </div>
+            </template>
           </div>
         </el-tab-pane>
 
@@ -224,6 +295,7 @@
 <script setup lang="ts">
 import dayjs from "dayjs";
 import * as echarts from "echarts";
+import { utils, writeFile } from "xlsx";
 import {
   ref,
   reactive,
@@ -233,11 +305,25 @@ import {
   computed,
   nextTick
 } from "vue";
+import { message } from "@/utils/message";
 import { getCollectorDetail } from "@/api/collector";
-import { getDeviceMonthPower } from "@/api/business-stats";
 import { getAlarmEventQueryList } from "@/api/alarm-event-query";
 import { getOperationLogsList } from "@/api/system";
 import { getAlarmTypeLabel } from "@/views/nested/alarm/constants";
+import {
+  formatMeterEnergyUnit,
+  formatMeterInstallAddress
+} from "../utils/meter-display";
+import {
+  ensureMeterUsageSeries,
+  getMeterUsageCache,
+  getSeriesForDimension,
+  invalidateMeterUsageCache,
+  normalizeUsageAnchorDate,
+  prefetchMeterUsageSummary,
+  type UsageDimension,
+  type UsageSummary
+} from "../utils/meter-usage-stats";
 
 const props = defineProps({
   data: {
@@ -274,11 +360,11 @@ const listRow = computed(
     >
 );
 
-/** 电表：与列表「序号」列一致（id）；其它表：与列表「用户」列一致 */
+/** 电表：用能单位（采集器名称）；其它表：用户名称 */
 const displayUserCell = computed(() => {
   const r = listRow.value;
   if (isElectric.value) {
-    return r.id != null && r.id !== "" ? String(r.id) : "-";
+    return formatMeterEnergyUnit(r);
   }
   return (
     r.remark ||
@@ -290,9 +376,22 @@ const displayUserCell = computed(() => {
 
 const displayMeterNo = computed(() => listRow.value.meterNo || "-");
 
-const displayAddress = computed(
-  () => listRow.value.address || listRow.value.installAddress || "-"
-);
+const collectorCreateFmt = ref("");
+const collectorLastCollectFmt = ref("");
+/** 采集器详情回填的安装位置（location / installAddress） */
+const collectorLocationFmt = ref("");
+
+const displayAddress = computed(() => {
+  if (!isElectric.value) {
+    return listRow.value.address || listRow.value.installAddress || "-";
+  }
+  const fromRow = formatMeterInstallAddress({
+    ...listRow.value,
+    collectorInstallAddress:
+      listRow.value.collectorInstallAddress || collectorLocationFmt.value
+  });
+  return fromRow;
+});
 
 const displayRemark = computed(() => listRow.value.remark || "-");
 
@@ -327,23 +426,27 @@ const extraFieldsToShow = computed(() => {
   return props.config?.extraFields ?? [];
 });
 
-const collectorCreateFmt = ref("");
-const collectorLastCollectFmt = ref("");
-const monthTrendRef = ref();
-let monthTrendChart: echarts.ECharts | null = null;
+const usageTrendRef = ref<HTMLElement | null>(null);
+let usageTrendChart: echarts.ECharts | null = null;
 
-const monthlyStats = reactive({
-  loading: false,
-  error: "",
-  currentMonthLabel: dayjs().format("YYYY-MM"),
+const usageDimension = ref<UsageDimension>("hour");
+const usageQueryDate = ref(dayjs().format("YYYY-MM-DD"));
+const usageExporting = ref(false);
+const usageSummaryLoading = ref(false);
+const usageSeriesLoading = ref(false);
+const usageSummaryError = ref("");
+const usageSeriesError = ref("");
+const usageSummaryFetchedAt = ref("");
+const usageSummary = reactive<UsageSummary>({
+  currentHourPower: 0,
+  todayPower: 0,
   currentMonthPower: 0,
-  previousMonthLabel: dayjs().subtract(1, "month").format("YYYY-MM"),
-  previousMonthPower: 0,
-  trend: [] as Array<{ label: string; power: number }>
+  currentYearPower: 0,
+  currentHourLabel: dayjs().format("HH:00"),
+  todayLabel: dayjs().format("YYYY-MM-DD"),
+  currentMonthLabel: dayjs().format("YYYY-MM"),
+  currentYearLabel: dayjs().format("YYYY")
 });
-
-/** 月统计接口在本弹窗内成功拉取完成时的本地时间（YYYY-MM-DD HH:mm:ss） */
-const monthlyStatsGeneratedAt = ref("");
 
 const formatTs = (v: unknown) => {
   if (v == null || v === "") return "";
@@ -351,174 +454,242 @@ const formatTs = (v: unknown) => {
   return d.isValid() ? d.format("YYYY-MM-DD HH:mm:ss") : String(v);
 };
 
-const extractMonthPowerValue = (response: Record<string, any>) => {
-  const payload = response?.data?.data ?? response?.data ?? response;
-  const value = payload?.monthPower ?? payload?.power;
-  return typeof value === "number" ? value : Number(value || 0);
-};
-
 const formatPower = (value?: number) => Number(value || 0).toFixed(2);
 
-const MONTH_TREND_LOOKBACK = 6;
-const MONTH_REQUEST_BATCH_SIZE = 2;
-
-const chunkMonths = (months: dayjs.Dayjs[], size: number) => {
-  const chunks: dayjs.Dayjs[][] = [];
-  for (let i = 0; i < months.length; i += size) {
-    chunks.push(months.slice(i, i + size));
-  }
-  return chunks;
+const resolveMeterId = () => {
+  const raw = listRow.value.id;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 };
 
-const updateMonthTrendChart = () => {
-  if (!isElectric.value || !monthTrendRef.value || monthlyStats.error) return;
+const resolveAnchorDate = () =>
+  normalizeUsageAnchorDate(
+    usageQueryDate.value || dayjs().format("YYYY-MM-DD")
+  );
 
-  if (!monthTrendChart) {
-    monthTrendChart = echarts.init(monthTrendRef.value);
+const applySummaryFromCache = (meterId: number) => {
+  const entry = getMeterUsageCache(meterId, resolveAnchorDate());
+  if (entry.summary) {
+    Object.assign(usageSummary, entry.summary);
   }
-
-  monthTrendChart.setOption({
-    tooltip: {
-      trigger: "axis",
-      formatter: params => {
-        const first = Array.isArray(params) ? params[0] : params;
-        return `${first.axisValue}<br/>用电量: ${formatPower(first.data)} ${props.config.unit}`;
-      }
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "3%",
-      top: "10%",
-      containLabel: true
-    },
-    xAxis: {
-      type: "category",
-      data: monthlyStats.trend.map(item => item.label)
-    },
-    yAxis: {
-      type: "value",
-      name: `用量(${props.config.unit})`
-    },
-    series: [
-      {
-        name: "用电量",
-        type: "bar",
-        data: monthlyStats.trend.map(item => item.power),
-        itemStyle: {
-          color: "#409EFF"
-        },
-        barMaxWidth: 32
-      }
-    ]
-  });
+  usageSummaryError.value = entry.summaryError || "";
+  usageSummaryFetchedAt.value = entry.summaryFetchedAt || "";
 };
 
-async function loadMonthlyStatistics() {
-  monthlyStats.loading = true;
-  monthlyStats.error = "";
-  monthlyStatsGeneratedAt.value = "";
-  monthlyStats.currentMonthLabel = dayjs().format("YYYY-MM");
-  monthlyStats.previousMonthLabel = dayjs()
-    .subtract(1, "month")
-    .format("YYYY-MM");
-  monthlyStats.currentMonthPower = 0;
-  monthlyStats.previousMonthPower = 0;
-  monthlyStats.trend = [];
+const updateUsageTrendChart = (points: { label: string; power: number }[]) => {
+  if (!isElectric.value || !usageTrendRef.value) return;
 
-  if (!isElectric.value) {
-    monthlyStats.loading = false;
-    return;
+  if (usageTrendChart && usageTrendChart.getDom() !== usageTrendRef.value) {
+    usageTrendChart.dispose();
+    usageTrendChart = null;
   }
 
-  const meterId = listRow.value.id;
-  if (meterId == null || meterId === "") {
-    monthlyStats.error = "缺少电表编号，无法加载月统计数据";
-    monthlyStats.loading = false;
-    return;
+  if (!usageTrendChart) {
+    usageTrendChart = echarts.init(usageTrendRef.value);
   }
 
-  try {
-    const months = Array.from({ length: MONTH_TREND_LOOKBACK }, (_, index) =>
-      dayjs().subtract(MONTH_TREND_LOOKBACK - 1 - index, "month")
-    );
-    const responses: Array<{
-      label: string;
-      yearMonth: string;
-      power: number | null;
-    }> = [];
-    let failedCount = 0;
+  const dimLabel =
+    usageDimension.value === "hour"
+      ? "时"
+      : usageDimension.value === "day"
+        ? "日"
+        : usageDimension.value === "month"
+          ? "月"
+          : "年";
 
-    // 分批请求，避免并发过高；单月失败不影响其他月份展示
-    const monthChunks = chunkMonths(months, MONTH_REQUEST_BATCH_SIZE);
-    for (const monthChunk of monthChunks) {
-      const settled = await Promise.allSettled(
-        monthChunk.map(async month => {
-          const yearMonth = month.format("YYYY-MM");
-          const yearMonthParam = month.format("YYYYMM");
-          const response = await getDeviceMonthPower(
-            Number(meterId),
-            yearMonthParam
-          );
-          return {
-            label: month.format("M月"),
-            yearMonth,
-            power: extractMonthPowerValue(response as Record<string, any>)
-          };
-        })
-      );
-
-      settled.forEach((result, index) => {
-        const month = monthChunk[index];
-        const fallback = {
-          label: month.format("M月"),
-          yearMonth: month.format("YYYY-MM"),
-          power: null
-        };
-        if (result.status === "fulfilled") {
-          responses.push(result.value);
-        } else {
-          failedCount += 1;
-          responses.push(fallback);
-          console.warn("月统计单月请求超时/失败:", fallback.yearMonth);
+  usageTrendChart.setOption(
+    {
+      tooltip: {
+        trigger: "axis",
+        formatter: params => {
+          const first = Array.isArray(params) ? params[0] : params;
+          return `${first.axisValue}<br/>用电量: ${formatPower(first.data)} ${props.config.unit}`;
         }
-      });
-    }
+      },
+      grid: {
+        left: "3%",
+        right: "4%",
+        bottom: "3%",
+        top: "12%",
+        containLabel: true
+      },
+      xAxis: {
+        type: "category",
+        data: points.map(item => item.label)
+      },
+      yAxis: {
+        type: "value",
+        name: `用量(${props.config.unit})`
+      },
+      series: [
+        {
+          name: `${dimLabel}用电量`,
+          type: "bar",
+          data: points.map(item => item.power),
+          itemStyle: { color: "#409EFF" },
+          barMaxWidth: 28
+        }
+      ]
+    },
+    true
+  );
+};
 
-    monthlyStats.trend = responses.map(item => ({
-      label: item.label,
-      power: item.power === null ? 0 : Number(item.power.toFixed(2))
-    }));
+async function prefetchUsageSummary(force = false) {
+  if (!isElectric.value) return;
+  const meterId = resolveMeterId();
+  if (meterId == null) {
+    usageSummaryError.value = "缺少电表ID，无法加载用量摘要";
+    return;
+  }
+  const anchor = resolveAnchorDate();
+  usageQueryDate.value = anchor;
 
-    const currentMonth = dayjs().format("YYYY-MM");
-    const previousMonth = dayjs().subtract(1, "month").format("YYYY-MM");
-    monthlyStats.currentMonthPower =
-      responses.find(item => item.yearMonth === currentMonth)?.power ?? 0;
-    monthlyStats.previousMonthPower =
-      responses.find(item => item.yearMonth === previousMonth)?.power ?? 0;
+  if (force) {
+    invalidateMeterUsageCache(meterId, anchor);
+  }
 
-    monthlyStatsGeneratedAt.value = dayjs().format("YYYY-MM-DD HH:mm:ss");
+  applySummaryFromCache(meterId);
+  if (!force && getMeterUsageCache(meterId, anchor).summary) {
+    return;
+  }
 
-    if (failedCount > 0 && failedCount < months.length) {
-      monthlyStats.error = `部分月份加载失败（${failedCount}/${months.length}），已显示近${MONTH_TREND_LOOKBACK}个月可用数据`;
-    } else if (failedCount >= months.length) {
-      monthlyStats.error = "月统计接口数据加载失败";
-    }
-
-    await nextTick();
-    updateMonthTrendChart();
+  usageSummaryLoading.value = true;
+  try {
+    const entry = await prefetchMeterUsageSummary(meterId, anchor);
+    applySummaryFromCache(meterId);
+    if (entry.summary) Object.assign(usageSummary, entry.summary);
   } catch (error) {
-    console.error("加载月统计数据失败:", error);
-    monthlyStats.error = "月统计接口数据加载失败";
-    monthlyStatsGeneratedAt.value = "";
+    console.error("预取用量摘要失败:", error);
+    usageSummaryError.value = "用量摘要加载失败";
   } finally {
-    monthlyStats.loading = false;
+    usageSummaryLoading.value = false;
   }
 }
+
+async function loadUsageSeriesForDimension(dimension: UsageDimension) {
+  if (!isElectric.value) return;
+  const meterId = resolveMeterId();
+  if (meterId == null) {
+    usageSeriesError.value = "缺少电表ID";
+    return;
+  }
+  const anchor = resolveAnchorDate();
+
+  usageSeriesLoading.value = true;
+  usageSeriesError.value = "";
+  try {
+    if (!getMeterUsageCache(meterId, anchor).summary) {
+      await prefetchMeterUsageSummary(meterId, anchor);
+      applySummaryFromCache(meterId);
+    }
+    const entry = await ensureMeterUsageSeries(meterId, dimension, anchor);
+    applySummaryFromCache(meterId);
+    usageSeriesError.value = entry.seriesError[dimension] || "";
+    const points = getSeriesForDimension(entry, dimension);
+    await nextTick();
+    updateUsageTrendChart(points);
+  } catch (error) {
+    console.error("加载用量曲线失败:", error);
+    usageSeriesError.value = "曲线数据加载失败";
+  } finally {
+    usageSeriesLoading.value = false;
+  }
+}
+
+const onUsageDimensionChange = () => {
+  void loadUsageSeriesForDimension(usageDimension.value);
+};
+
+const onUsageQuery = async () => {
+  await prefetchUsageSummary(true);
+  await loadUsageSeriesForDimension(usageDimension.value);
+};
+
+const exportUsageExcel = async () => {
+  if (!isElectric.value) {
+    message("当前仅电表支持导出用量", { type: "warning" });
+    return;
+  }
+  const meterId = resolveMeterId();
+  if (meterId == null) {
+    message("缺少电表ID", { type: "warning" });
+    return;
+  }
+
+  usageExporting.value = true;
+  try {
+    const anchor = resolveAnchorDate();
+    await prefetchMeterUsageSummary(meterId, anchor);
+    const entry = await ensureMeterUsageSeries(
+      meterId,
+      usageDimension.value,
+      anchor
+    );
+    applySummaryFromCache(meterId);
+    const points = getSeriesForDimension(entry, usageDimension.value);
+    if (!points.length) {
+      message("没有可导出的曲线数据", { type: "warning" });
+      return;
+    }
+
+    const dimLabel =
+      usageDimension.value === "hour"
+        ? "时"
+        : usageDimension.value === "day"
+          ? "日"
+          : usageDimension.value === "month"
+            ? "月"
+            : "年";
+    const meterNo = displayMeterNo.value;
+    const unit = props.config.unit || "kWh";
+
+    const sheetData: (string | number)[][] = [
+      ["电表编号", meterNo],
+      ["查询日期", anchor],
+      ["统计维度", dimLabel],
+      [],
+      ["摘要项", "数值", "说明"],
+      [
+        "此时",
+        Number(usageSummary.currentHourPower || 0),
+        usageSummary.currentHourLabel
+      ],
+      ["当日", Number(usageSummary.todayPower || 0), usageSummary.todayLabel],
+      [
+        "当月",
+        Number(usageSummary.currentMonthPower || 0),
+        usageSummary.currentMonthLabel
+      ],
+      [
+        "当年",
+        Number(usageSummary.currentYearPower || 0),
+        usageSummary.currentYearLabel
+      ],
+      [],
+      ["时间点", `用电量(${unit})`],
+      ...points.map(p => [p.label, Number(p.power || 0)])
+    ];
+
+    const workSheet = utils.aoa_to_sheet(sheetData);
+    const workBook = utils.book_new();
+    utils.book_append_sheet(workBook, workSheet, `${dimLabel}用量`);
+    const fileName = `电表用量_${meterNo}_${anchor}_${dimLabel}_${dayjs().format("YYYYMMDD_HHmmss")}.xlsx`;
+    writeFile(workBook, fileName);
+    message("导出成功", { type: "success" });
+  } catch (error) {
+    console.error("导出用量失败:", error);
+    message("导出失败，请重试", { type: "error" });
+  } finally {
+    usageExporting.value = false;
+  }
+};
 
 async function loadCollectorTimes() {
   collectorCreateFmt.value = "";
   collectorLastCollectFmt.value = "";
+  collectorLocationFmt.value = "";
   if (!isElectric.value) return;
   const cid = listRow.value.collectorId;
   if (cid == null || cid === "") return;
@@ -533,6 +704,12 @@ async function loadCollectorTimes() {
     collectorLastCollectFmt.value = formatTs(
       c.lastCollectTime ?? c.lastCommunicationTime
     );
+    const location = String(
+      c.installAddress ?? c.location ?? c.address ?? ""
+    ).trim();
+    if (location && location !== "-" && location !== "—") {
+      collectorLocationFmt.value = location;
+    }
   } catch {
     /* 使用行内字段兜底 */
   }
@@ -689,29 +866,32 @@ function syncRowData() {
 onMounted(() => {
   syncRowData();
   loadCollectorTimes();
-  loadMonthlyStatistics();
+  void prefetchUsageSummary();
   loadAlarmRecords();
 });
 
 watch(
-  () => props.data,
-  () => {
+  () => listRow.value.id,
+  (id, prevId) => {
     syncRowData();
+    if (id === prevId) return;
     loadCollectorTimes();
-    loadMonthlyStatistics();
+    void prefetchUsageSummary();
     loadAlarmRecords();
     if (activeTab.value === "operations") {
       loadOperationRecords();
     }
-  },
-  { deep: true }
+    if (activeTab.value === "statistics" && isElectric.value) {
+      void loadUsageSeriesForDimension(usageDimension.value);
+    }
+  }
 );
 
 watch(
   () => props.meterType,
   () => {
     loadCollectorTimes();
-    loadMonthlyStatistics();
+    void prefetchUsageSummary();
   }
 );
 
@@ -719,8 +899,8 @@ watch(
   () => activeTab.value,
   async value => {
     if (value === "statistics") {
-      await nextTick();
-      updateMonthTrendChart();
+      await prefetchUsageSummary();
+      await loadUsageSeriesForDimension(usageDimension.value);
     }
     if (value === "alarms") {
       loadAlarmRecords();
@@ -732,15 +912,23 @@ watch(
 );
 
 onUnmounted(() => {
-  if (monthTrendChart) {
-    monthTrendChart.dispose();
-    monthTrendChart = null;
+  if (usageTrendChart) {
+    usageTrendChart.dispose();
+    usageTrendChart = null;
   }
 });
 
 const onRefresh = () => {
   loadCollectorTimes();
-  loadMonthlyStatistics();
+  const meterId = resolveMeterId();
+  if (meterId != null) {
+    invalidateMeterUsageCache(meterId, resolveAnchorDate());
+  }
+  void prefetchUsageSummary(true).then(() => {
+    if (activeTab.value === "statistics") {
+      void loadUsageSeriesForDimension(usageDimension.value);
+    }
+  });
   loadAlarmRecords();
   if (activeTab.value === "operations") {
     loadOperationRecords();

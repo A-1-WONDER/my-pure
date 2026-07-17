@@ -31,6 +31,8 @@ export interface MeterStatItem {
   meterId: number;
   meterNo: string;
   meterName: string;
+  /** 所属采集器（summary 映射成功时返回） */
+  collectorId?: number;
   totalConsumption: number; // 总用电量（kWh）
   peakConsumption?: number; // 尖时用电量
   highConsumption?: number; // 峰时用电量
