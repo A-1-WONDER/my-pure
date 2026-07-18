@@ -144,7 +144,7 @@ menus:
   pureMenu1-3: Menu1-3
   pureMenu2: Menu2
   purePermission: Permission Manage
-  purePermissionPage: API Authorization
+  purePermissionPage: API Permission
   purePermissionButton: Button Permission
   purePermissionButtonRouter: Route return button permission
   purePermissionButtonLogin: Login interface return button permission

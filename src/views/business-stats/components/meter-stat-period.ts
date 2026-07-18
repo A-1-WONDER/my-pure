@@ -2,6 +2,18 @@ import type { MeterStatItem } from "@/api/business-stats";
 
 export type MeterStatDetailPeriod = "hour" | "day" | "month" | "year";
 
+/** 明细表与导出共用的固定列（不含用电量列） */
+export const METER_STAT_DETAIL_FIXED_HEADERS = [
+  "序号",
+  "标签",
+  "采集器",
+  "在线状态",
+  "通讯地址",
+  "用能单位",
+  "电表类型",
+  "备注"
+] as const;
+
 /** 各统计维度仅文案不同，列表结构复用同一套 */
 export const METER_STAT_PERIOD_META: Record<
   MeterStatDetailPeriod,
@@ -54,6 +66,24 @@ export const METER_STAT_PERIOD_META: Record<
     buildTitle: date => `电表明细 - ${date}`
   }
 };
+
+/** 页面表头：固定列 + 用电量 + 其他 */
+export function getDetailTableHeaders(period: MeterStatDetailPeriod): string[] {
+  const meta = METER_STAT_PERIOD_META[period] ?? METER_STAT_PERIOD_META.hour;
+  return [...METER_STAT_DETAIL_FIXED_HEADERS, meta.consumptionLabel, "其他"];
+}
+
+/** 导出表头：与页面一致，用电量列带 (kWh) 单位后缀 */
+export function getDetailExportHeaders(
+  period: MeterStatDetailPeriod
+): string[] {
+  const meta = METER_STAT_PERIOD_META[period] ?? METER_STAT_PERIOD_META.hour;
+  return [
+    ...METER_STAT_DETAIL_FIXED_HEADERS,
+    meta.exportConsumptionLabel,
+    "其他"
+  ];
+}
 
 export type OpenMeterStatDetailOptions = {
   period: MeterStatDetailPeriod;

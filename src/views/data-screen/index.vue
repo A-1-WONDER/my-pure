@@ -1527,21 +1527,6 @@ onBeforeUnmount(() => {
                     </td>
                     <td>{{ row.minutesAgo }}</td>
                   </tr>
-                  <tr
-                    v-for="(row, idx) in collectorEventList"
-                    :key="`c-dup-${row.collectorNo}-${idx}`"
-                    aria-hidden="true"
-                  >
-                    <td>{{ row.collectorNo }}</td>
-                    <td>
-                      <span
-                        :class="row.event === '上线' ? 'tag--on' : 'tag--off'"
-                      >
-                        {{ row.event }}
-                      </span>
-                    </td>
-                    <td>{{ row.minutesAgo }}</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -1826,16 +1811,6 @@ onBeforeUnmount(() => {
                     <td class="col-detail">{{ alarmDetailText(item) }}</td>
                     <td>{{ formatHoursAgo(item.alarmTime) }}</td>
                   </tr>
-                  <tr
-                    v-for="item in alarmList"
-                    :key="`a-dup-${item.id}`"
-                    aria-hidden="true"
-                  >
-                    <td>{{ alarmDeviceLabel(item) }}</td>
-                    <td>{{ alarmTypeText(item) }}</td>
-                    <td class="col-detail">{{ alarmDetailText(item) }}</td>
-                    <td>{{ formatHoursAgo(item.alarmTime) }}</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -1849,97 +1824,15 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&display=swap");
 
-@keyframes title-node-pulse {
-  0%,
-  100% {
-    opacity: 0.65;
-    transform: scale(0.9);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-}
-
-@keyframes head-wave {
-  from {
-    transform: translateX(0);
-  }
-
-  to {
-    transform: translateX(-50%);
-  }
-}
-
 @keyframes panel-in {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(10px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes title-glow {
-  0%,
-  100% {
-    text-shadow:
-      0 0 12px rgb(77 184 255 / 70%),
-      0 0 28px rgb(110 207 255 / 40%);
-  }
-
-  50% {
-    text-shadow:
-      0 0 18px rgb(110 207 255 / 90%),
-      0 0 40px rgb(77 184 255 / 55%);
-  }
-}
-
-@keyframes scanline {
-  from {
-    background-position: 0 0;
-  }
-
-  to {
-    background-position: 0 100vh;
-  }
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-16px);
-  }
-}
-
-@keyframes float-center {
-  0%,
-  100% {
-    opacity: 0.22;
-    transform: translateX(-50%) scale(1);
-  }
-
-  50% {
-    opacity: 0.35;
-    transform: translateX(-50%) scale(1.08);
-  }
-}
-
-@keyframes table-scroll {
-  from {
-    transform: translateY(0);
-  }
-
-  to {
-    transform: translateY(-50%);
   }
 }
 
@@ -2134,7 +2027,6 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   opacity: 0.38;
   filter: blur(90px);
-  animation: float 10s ease-in-out infinite;
 
   &--left {
     top: 6%;
@@ -2150,7 +2042,6 @@ onBeforeUnmount(() => {
     width: 440px;
     height: 440px;
     background: #0a2240;
-    animation-delay: -5s;
   }
 
   &--center {
@@ -2161,29 +2052,18 @@ onBeforeUnmount(() => {
     background: rgb(77 184 255 / 28%);
     opacity: 0.22;
     transform: translateX(-50%);
-    animation: float-center 12s ease-in-out infinite;
   }
 }
 
 .data-screen__scanline {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgb(248 251 255 / 4%) 50%,
-    transparent 100%
-  );
-  background-size: 100% 5px;
-  opacity: 0.5;
-  animation: scanline 8s linear infinite;
+  display: none;
 }
 
 .data-screen__frame {
   position: absolute;
   inset: 10px 12px;
   pointer-events: none;
-  border: var(--frame-w) solid var(--tech-edge);
+  border: 2px solid var(--tech-edge);
   box-shadow: var(--tech-frame-glow);
 }
 
@@ -2325,7 +2205,6 @@ onBeforeUnmount(() => {
   text-shadow:
     0 0 12px rgb(77 184 255 / 70%),
     0 0 28px rgb(110 207 255 / 40%);
-  animation: title-glow 3s ease-in-out infinite;
 }
 
 .data-screen__title-ornament {
@@ -2360,7 +2239,6 @@ onBeforeUnmount(() => {
     0 0 10px rgb(110 207 255 / 90%),
     0 0 18px rgb(77 184 255 / 65%);
   transform: rotate(45deg);
-  animation: title-node-pulse 2.4s ease-in-out infinite;
 }
 
 .data-screen__title-ornament--bottom {
@@ -2434,7 +2312,6 @@ onBeforeUnmount(() => {
   background: #6ecfff;
   border-radius: 50%;
   box-shadow: 0 0 10px rgb(110 207 255 / 85%);
-  animation: title-node-pulse 2.4s ease-in-out infinite;
 }
 
 .data-screen__clock-block {
@@ -2530,7 +2407,7 @@ onBeforeUnmount(() => {
     inset 0 1px 0 color-mix(in srgb, var(--flow-color) 18%, transparent),
     0 4px 20px rgb(0 0 0 / 32%),
     var(--tech-frame-glow);
-  animation: panel-in 0.7s ease both;
+  animation: panel-in 0.3s ease both;
   animation-delay: var(--delay, 0s);
 
   &::before {
@@ -2694,7 +2571,6 @@ onBeforeUnmount(() => {
       repeat-x;
     background-size: 60px 8px;
     opacity: 0.9;
-    animation: head-wave 4s linear infinite;
   }
 }
 
@@ -2969,19 +2845,7 @@ onBeforeUnmount(() => {
 
 .data-panel__scroll-inner {
   height: 100%;
-  overflow: hidden;
-
-  &:hover .data-panel__table {
-    animation-play-state: paused;
-  }
-}
-
-.data-panel__scroll-inner .data-panel__table {
-  animation: table-scroll 28s linear infinite;
-}
-
-.data-panel__scroll-inner--alarm .data-panel__table {
-  animation-duration: 32s;
+  overflow: auto;
 }
 
 .data-panel__table {

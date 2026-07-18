@@ -144,7 +144,7 @@ menus:
   pureMenu1-3: 菜单1-3
   pureMenu2: 菜单二
   purePermission: 权限管理
-  purePermissionPage: 接口授权
+  purePermissionPage: 接口权限
   purePermissionButton: 按钮权限
   purePermissionButtonRouter: 路由返回按钮权限
   purePermissionButtonLogin: 登录接口返回按钮权限

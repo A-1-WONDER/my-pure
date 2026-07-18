@@ -109,6 +109,7 @@ import type { MeterStatItem } from "@/api/business-stats";
 import { METER_ENRICH_BATCH_SIZE } from "@/api/business-stats";
 import {
   METER_STAT_PERIOD_META,
+  getDetailExportHeaders,
   type MeterStatDetailPeriod
 } from "./meter-stat-period";
 import {
@@ -555,18 +556,7 @@ const exportExcel = () => {
 
   exporting.value = true;
   try {
-    const titleList = [
-      "序号",
-      "标签",
-      "采集器",
-      "在线状态",
-      "通讯地址",
-      "用能单位",
-      "电表类型",
-      "备注",
-      periodMeta.value.exportConsumptionLabel,
-      "其他"
-    ];
+    const titleList = getDetailExportHeaders(props.period);
 
     const body = rows.map(item => {
       const collectorText = formatCollectorDisplay(item);

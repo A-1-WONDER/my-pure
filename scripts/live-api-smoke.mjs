@@ -127,9 +127,11 @@ async function login() {
     return process.env.SMOKE_TOKEN.replace(/^Bearer\s+/i, "");
   }
 
-  // Prefer an existing online session (login currently may fail until AppRun restart)
-  const recovered = await tryRecoverOnlineToken();
-  if (recovered) return recovered;
+  // Fresh login by default; set SMOKE_RECOVER=1 to reuse Redis online session
+  if (process.env.SMOKE_RECOVER === "1") {
+    const recovered = await tryRecoverOnlineToken();
+    if (recovered) return recovered;
+  }
 
   const codeRes = await httpJson("GET", "/auth/code");
   if (codeRes.status !== 200 || !codeRes.json?.uuid) {
@@ -155,6 +157,7 @@ async function login() {
   if (!token) {
     throw new Error(`no token in login response: ${JSON.stringify(loginRes.json)}`);
   }
+  console.log("(fresh login via /auth/login)");
   return String(token).replace(/^Bearer\s+/i, "");
 }
 
@@ -222,26 +225,47 @@ async function main() {
     return;
   }
 
-  // meters
-  const meters = await httpJson("GET", "/api/meters", {
-    token,
-    query: { page: 0, size: 20, meterType: "electric" }
-  });
-  const meterContent =
-    meters.json?.content ||
-    meters.json?.data?.content ||
-    (Array.isArray(meters.json) ? meters.json : []);
-  const meterOk =
-    meters.status === 200 && Array.isArray(meterContent) && meterContent.length > 0;
+  // meters — page through up to 200 for full-plant smoke
+  const meterContent = [];
+  let meterHttpOk = true;
+  let meterMs = 0;
+  for (let page = 0; page < 5; page++) {
+    const meters = await httpJson("GET", "/api/meters", {
+      token,
+      query: { page, size: 50, meterType: "electric" }
+    });
+    meterMs += meters.ms;
+    if (meters.status !== 200) {
+      meterHttpOk = false;
+      break;
+    }
+    const chunk =
+      meters.json?.content ||
+      meters.json?.data?.content ||
+      (Array.isArray(meters.json) ? meters.json : []);
+    if (!Array.isArray(chunk) || !chunk.length) break;
+    meterContent.push(...chunk);
+    const total = Number(meters.json?.totalElements ?? meters.json?.data?.totalElements);
+    if (Number.isFinite(total) && meterContent.length >= total) break;
+    if (chunk.length < 50) break;
+  }
+  const meterOk = meterHttpOk && meterContent.length > 0;
   const withCollectorName = meterContent.filter(m => m?.collectorName).length;
   const withCollectorAddr = meterContent.filter(
     m => m?.collectorInstallAddress || m?.installAddress
   ).length;
+  const collectorIdSet = [
+    ...new Set(
+      meterContent
+        .map(m => Number(m.collectorId))
+        .filter(n => Number.isFinite(n))
+    )
+  ];
   results.push(
     passFail(
       meterOk,
-      "GET /api/meters",
-      `HTTP ${meters.status}, rows=${meterContent.length}, collectorName=${withCollectorName}, addrish=${withCollectorAddr}, ${meters.ms}ms`
+      "GET /api/meters (paged)",
+      `rows=${meterContent.length}, collectors=${collectorIdSet.length}, collectorName=${withCollectorName}, addrish=${withCollectorAddr}, ${meterMs}ms`
     )
   );
 
@@ -289,7 +313,7 @@ async function main() {
     console.log("  sample:", JSON.stringify(monthSum.sample, null, 2));
   }
 
-  // filtered by first collector
+  // filtered by first collector + multi-collector if available
   if (firstCollectorId != null) {
     const filtered = await httpJson(
       "GET",
@@ -313,15 +337,121 @@ async function main() {
       fSum.sample.every(
         s => s.collectorId == null || Number(s.collectorId) === Number(firstCollectorId)
       ) || fSum.itemCount === 0;
+    const expectedUnderCollector = meterContent.filter(
+      m => Number(m.collectorId) === Number(firstCollectorId)
+    ).length;
     results.push(
       passFail(
         filtered.status === 200 && fSum.ok && filteredLessOrEq && collectorMatch,
         `summary month collectorIds=${firstCollectorId}`,
-        `HTTP ${filtered.status}, items ${fSum.itemCount}/${allItems}, collectorMatch=${collectorMatch}, ${filtered.ms}ms`
+        `HTTP ${filtered.status}, items ${fSum.itemCount}/${allItems}, metersUnderCollector=${expectedUnderCollector}, collectorMatch=${collectorMatch}, ${filtered.ms}ms`
       )
     );
+
+    if (collectorIdSet.length >= 2) {
+      const multiIds = collectorIdSet.slice(0, 2).join(",");
+      const multi = await httpJson(
+        "GET",
+        "/api/external/energy-statistics/summary",
+        {
+          token,
+          query: {
+            dimension: "month",
+            startTime: "202607",
+            endTime: "202607",
+            ignoreRadio: 0,
+            collectorIds: multiIds
+          }
+        }
+      );
+      const mSum = summarizeSummary(multi.json);
+      const allowed = new Set(collectorIdSet.slice(0, 2).map(Number));
+      const multiMatch =
+        mSum.sample.every(
+          s => s.collectorId == null || allowed.has(Number(s.collectorId))
+        ) || mSum.itemCount === 0;
+      results.push(
+        passFail(
+          multi.status === 200 && mSum.ok && multiMatch,
+          `summary month multi collectorIds=${multiIds}`,
+          `items=${mSum.itemCount}, match=${multiMatch}, ${multi.ms}ms`
+        )
+      );
+    }
   } else {
     results.push(passFail(false, "summary month filter", "no collector id"));
+  }
+
+  // hour summary pressure (full day window) — timing baseline for plant scale
+  const hourDay = "20260717";
+  const hourSummary = await httpJson(
+    "GET",
+    "/api/external/energy-statistics/summary",
+    {
+      token,
+      query: {
+        dimension: "hour",
+        startTime: `${hourDay}00`,
+        endTime: `${hourDay}23`,
+        ignoreRadio: 0
+      }
+    }
+  );
+  const hourSum = summarizeSummary(hourSummary.json);
+  results.push(
+    passFail(
+      hourSummary.status === 200,
+      "summary hour (full day)",
+      `HTTP ${hourSummary.status}, status=${hourSum.status}, buckets=${hourSum.timeBuckets}, items=${hourSum.itemCount}, msg=${hourSum.msg}, ${hourSummary.ms}ms`
+    )
+  );
+  // second hit should come from Redis (hour/day summary cache)
+  if (hourSummary.status === 200) {
+    const hourCached = await httpJson(
+      "GET",
+      "/api/external/energy-statistics/summary",
+      {
+        token,
+        query: {
+          dimension: "hour",
+          startTime: `${hourDay}00`,
+          endTime: `${hourDay}23`,
+          ignoreRadio: 0
+        }
+      }
+    );
+    const hc = summarizeSummary(hourCached.json);
+    results.push(
+      passFail(
+        hourCached.status === 200 && hc.ok,
+        "summary hour (cache hit)",
+        `buckets=${hc.timeBuckets}, items=${hc.itemCount}, ${hourCached.ms}ms (1st=${hourSummary.ms}ms)`
+      )
+    );
+  }
+  if (firstCollectorId != null && hourSummary.status === 200 && hourSum.ok) {
+    const hourFiltered = await httpJson(
+      "GET",
+      "/api/external/energy-statistics/summary",
+      {
+        token,
+        query: {
+          dimension: "hour",
+          startTime: `${hourDay}00`,
+          endTime: `${hourDay}23`,
+          ignoreRadio: 0,
+          collectorIds: String(firstCollectorId)
+        }
+      }
+    );
+    const hf = summarizeSummary(hourFiltered.json);
+    results.push(
+      passFail(
+        hourFiltered.status === 200 && hf.ok,
+        `summary hour collectorIds=${firstCollectorId}`,
+        `buckets=${hf.timeBuckets}, items=${hf.itemCount}, ${hourFiltered.ms}ms`
+      )
+    );
   }
 
   // day summary (may depend on 3.2)
@@ -360,6 +490,33 @@ async function main() {
     );
   }
 
+  // batch day-power for up to 20 meters
+  const batchIds = meterContent
+    .map(m => Number(m.id))
+    .filter(n => Number.isFinite(n))
+    .slice(0, 20);
+  if (batchIds.length) {
+    const batch = await httpJson(
+      "POST",
+      "/api/external/energy-statistics/devices/day-power/batch",
+      {
+        token,
+        body: { deviceIds: batchIds, date: "2026-07-17" }
+      }
+    );
+    const items =
+      batch.json?.items ||
+      batch.json?.data?.items ||
+      (Array.isArray(batch.json) ? batch.json : null);
+    results.push(
+      passFail(
+        batch.status === 200,
+        `day-power batch n=${batchIds.length}`,
+        `HTTP ${batch.status}, items=${Array.isArray(items) ? items.length : "?"}, ${batch.ms}ms`
+      )
+    );
+  }
+
   // device day-power if we have a meter
   const mid = meterContent[0]?.id;
   if (mid != null) {
@@ -375,6 +532,37 @@ async function main() {
         `HTTP ${dp.status}, keys=${Object.keys(dp.json || {}).join(",")}, ${dp.ms}ms`
       )
     );
+  }
+
+  // daily-energy reconcile (read-only)
+  const reconcile = await httpJson(
+    "GET",
+    "/api/external/energy-statistics/daily-energy/reconcile",
+    { token, query: { date: "2026-07-17" } }
+  );
+  results.push(
+    passFail(
+      reconcile.status === 200 && reconcile.json?.success !== false,
+      "daily-energy reconcile",
+      `HTTP ${reconcile.status}, expected=${reconcile.json?.expectedCount}, present=${reconcile.json?.presentCount}, missing=${reconcile.json?.missingCount}, healthy=${reconcile.json?.healthy}, ${reconcile.ms}ms`
+    )
+  );
+
+  // redis energy cache volume
+  const cacheStats = await httpJson(
+    "GET",
+    "/api/external/energy-statistics/cache-stats",
+    { token }
+  );
+  results.push(
+    passFail(
+      cacheStats.status === 200 && typeof cacheStats.json?.total === "number",
+      "energy cache-stats",
+      `HTTP ${cacheStats.status}, total=${cacheStats.json?.total}, ${cacheStats.ms}ms`
+    )
+  );
+  if (cacheStats.json?.byPrefix) {
+    console.log("  cache byPrefix:", JSON.stringify(cacheStats.json.byPrefix));
   }
 
   const failed = results.filter(r => !r).length;

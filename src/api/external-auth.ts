@@ -1,34 +1,37 @@
 import { http } from "@/utils/http";
 import type { Result } from "@/api/types";
 
-export type ApiMode = "dev" | "prod";
-export type SyncMode = "on" | "off";
-
-export interface ExternalApiAuthSettings {
-  authCode: string;
-  requestCount: number;
-  apiMode: ApiMode;
-  syncMode: SyncMode;
-  randomString: string;
-  apiKey?: string;
-  defaultMeterType: string;
-  apiDocUrl: string;
-  statusText?: string;
+/** 对外可调用接口项 */
+export interface PartnerApiItem {
+  method: string;
+  path: string;
+  description: string;
 }
 
-/** 查询接口授权配置 */
-export const getExternalApiAuthSettings = () => {
-  return http.request<Result<ExternalApiAuthSettings>>(
+/** 对外对接信息（不含 3.2 密钥） */
+export interface PartnerIntegrationInfo {
+  baseUrl: string;
+  apiDocUrl: string;
+  partnerUsername: string;
+  authHeader: string;
+  tokenPrefix: string;
+  loginHint: string;
+  apis: PartnerApiItem[];
+}
+
+/** 查询对外对接信息 */
+export const getPartnerIntegration = () => {
+  return http.request<Result<PartnerIntegrationInfo>>(
     "post",
     "/api/external-auth-settings-get"
   );
 };
 
-/** 保存接口授权配置 */
-export const saveExternalApiAuthSettings = (data: ExternalApiAuthSettings) => {
-  return http.request<Result<ExternalApiAuthSettings>>(
+/** 仅保存对接账号用户名 */
+export const savePartnerUsername = (partnerUsername: string) => {
+  return http.request<Result<PartnerIntegrationInfo>>(
     "post",
     "/api/external-auth-settings-save",
-    { data }
+    { data: { partnerUsername } }
   );
 };
