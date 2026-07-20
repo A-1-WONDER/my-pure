@@ -29,7 +29,7 @@ const collectorOfflineCount = ref(0);
 const collectorRows = ref<Record<string, unknown>[]>([]);
 
 /** 系统信息（区域与增值服务状态） */
-const regionName = ref("能耗管理平台");
+const regionName = ref("凯晟能耗管理平台");
 const regionAddress = ref("—");
 
 const loginInfoLoading = ref(false);
@@ -268,7 +268,7 @@ const loadCollectorStats = async () => {
 
 const loadSystemRegionInfo = async () => {
   // 系统信息面板区域名称固定展示；区域地址暂无配置时保持 —
-  regionName.value = "能耗管理平台";
+  regionName.value = "凯晟能耗管理平台";
   if (!regionAddress.value) {
     regionAddress.value = "—";
   }

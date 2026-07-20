@@ -125,10 +125,6 @@
                   </el-checkbox>
                   <el-button link type="primary"> 忘记密码 </el-button>
                 </div>
-                <!-- 开发环境显示密码提示 -->
-                <div v-if="isDev" class="mt-2 text-xs text-gray-500">
-                  测试账号: admin / 123456
-                </div>
                 <!-- 验证码提示 -->
                 <div class="mt-1 text-xs text-blue-500">
                   提示：{{ captchaTip }}
@@ -152,7 +148,7 @@
     <div
       class="w-full flex-c absolute bottom-3 text-sm text-[rgba(0,0,0,0.6)] dark:text-[rgba(220,220,242,0.8)]"
     >
-      品格 © 2025-2026{{ title }}
+      凯晟 © 2025-2026能耗管理平台
     </div>
   </div>
 </template>
@@ -218,9 +214,6 @@ const { dataTheme, themeMode, dataThemeChange } = useDataThemeChange();
 dataThemeChange(themeMode.value);
 const { title, getDropdownItemStyle, getDropdownItemClass } = useNav();
 const { locale, translationCh, translationEn } = useTranslationLang();
-
-// 判断是否为开发环境
-const isDev = computed(() => import.meta.env.DEV);
 
 // 验证码相关计算属性
 const captchaTip = computed(() => getCaptchaTip());

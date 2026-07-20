@@ -1,14 +1,8 @@
-<script setup lang="ts">
-import { getConfig } from "@/config";
-
-const TITLE = getConfig("Title");
-</script>
-
 <template>
   <footer
     class="layout-footer text-[rgba(0,0,0,0.6)] dark:text-[rgba(220,220,242,0.8)]"
   >
-    品格 © 2025-2026{{ TITLE }}
+    凯晟 © 2025-2026能耗管理平台
   </footer>
 </template>
 
