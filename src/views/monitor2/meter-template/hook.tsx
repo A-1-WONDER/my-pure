@@ -296,24 +296,6 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           `${totalPower || 0} ${config.unit || "kWh"}`
       },
       {
-        label: "剩余金额",
-        prop: "remainingAmount",
-        minWidth: 100,
-        formatter: ({ remainingAmount }) => `¥${remainingAmount || 0}`
-      },
-      {
-        label: "其他",
-        prop: "otherInfo",
-        minWidth: 120,
-        cellRenderer: scope => {
-          const info = [];
-          if (scope.row.voltage) info.push(`${scope.row.voltage}V`);
-          if (scope.row.current) info.push(`${scope.row.current}A`);
-          if (scope.row.temperature) info.push(`${scope.row.temperature}°C`);
-          return <span>{info.join(" / ") || "-"}</span>;
-        }
-      },
-      {
         label: "操作",
         fixed: "right",
         slot: "operation",
@@ -401,16 +383,6 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           } else if (column.prop === "totalPower") {
             // 处理累计用电量
             arr.push(`${item[column.prop] || 0} ${config.unit || "kWh"}`);
-          } else if (column.prop === "remainingAmount") {
-            // 处理剩余金额
-            arr.push(`¥${item[column.prop] || 0}`);
-          } else if (column.prop === "otherInfo") {
-            // 处理其他信息
-            const info = [];
-            if (item.voltage) info.push(`${item.voltage}V`);
-            if (item.current) info.push(`${item.current}A`);
-            if (item.temperature) info.push(`${item.temperature}°C`);
-            arr.push(info.join(" / ") || "-");
           } else {
             arr.push(item[column.prop] || "-");
           }
