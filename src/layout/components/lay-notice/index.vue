@@ -14,6 +14,7 @@ import {
 } from "@/utils/alarmNoticePoll";
 import { fetchSiteMessages, fetchSiteTodos } from "@/utils/siteNoticeLoad";
 import type { ListItem } from "./data";
+import { ElMessageBox } from "element-plus";
 import { message } from "@/utils/message";
 
 const { t } = useI18n();
@@ -83,8 +84,17 @@ function onNoticeDropdownVisible(visible: boolean) {
   }
 }
 
-function handleClearAlarmNotices() {
+async function handleClearAlarmNotices() {
   if (alarmNoticeItems.value.length === 0) return;
+  try {
+    await ElMessageBox.confirm("确定清空全部报警通知吗？", "清空确认", {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消"
+    });
+  } catch {
+    return;
+  }
   alarmNoticeStore.clearAlarmNotices();
   message("已清空通知", { type: "success" });
 }

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from "vue";
 import { ElMessage } from "element-plus";
 const emit = defineEmits(["close"]);
 
@@ -25,7 +24,11 @@ const handleClose = () => emit("close");
       <el-button size="small" type="primary" @click="handleStart"
         >开始</el-button
       >
-      <el-button size="small" @click="handleClear">清空</el-button>
+      <el-popconfirm title="确定要清空吗？" @confirm="handleClear">
+        <template #reference>
+          <el-button size="small">清空</el-button>
+        </template>
+      </el-popconfirm>
     </div>
 
     <div>
