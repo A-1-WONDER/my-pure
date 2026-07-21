@@ -3,6 +3,7 @@ import { getCollectorList } from "@/api/collector";
 import {
   DAY_POWER_BATCH_SIZE,
   STATS_METER_PAGE_SIZE,
+  countStatsDevices,
   extractDayPowerValueFromResponse,
   extractMeterRowsFromApiResponse,
   getDeviceDayPowerBatch,
@@ -111,7 +112,7 @@ export function filterStatsByMeterIds(
         ...row,
         meterStats,
         totalConsumption: Number(totalConsumption.toFixed(2)),
-        deviceCount: meterStats.length
+        deviceCount: countStatsDevices(meterStats)
       };
     })
     .filter(row => row.meterStats.length > 0 || row.totalConsumption > 0);
@@ -214,13 +215,9 @@ export async function fetchMeterDayStatsForDate(
       powerById.set(id, extractDayPowerValueFromResponse(item));
     }
     for (const { row, deviceId } of chunk) {
-      const totalConsumption = powerById.get(deviceId);
-      if (
-        totalConsumption === undefined ||
-        !Number.isFinite(totalConsumption)
-      ) {
-        continue;
-      }
+      const raw = powerById.get(deviceId);
+      const totalConsumption =
+        raw !== undefined && Number.isFinite(raw) ? Number(raw) : 0;
       stats.push({
         meterId: deviceId,
         meterNo: String(row.meterNo ?? row.meterName ?? deviceId),

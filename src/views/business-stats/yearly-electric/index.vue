@@ -112,6 +112,7 @@ import {
 } from "../components/stats-meter-utils";
 import {
   METER_ENRICH_BATCH_SIZE,
+  countStatsDevices,
   extractYearPowerValue,
   getDeviceYearPower,
   resolveMeterRowDeviceId,
@@ -227,7 +228,7 @@ const loadYearlyStatsFromYearPower = async (): Promise<{
       timeKey: yearStr,
       date: `${yearStr}年`,
       totalConsumption: Number(totalConsumption.toFixed(2)),
-      deviceCount: meterStats.length,
+      deviceCount: countStatsDevices(meterStats),
       meterStats: meterStats.map(item => ({
         meterId: item.meterId,
         meterNo: item.meterNo,

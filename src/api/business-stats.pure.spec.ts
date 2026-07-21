@@ -9,6 +9,7 @@ vi.mock("@/api/types", () => ({}));
 import {
   extractMeterRowsFromApiResponse,
   formatTimeKey,
+  countStatsDevices,
   resolveMeterRowDeviceId,
   unwrapEnergyStatisticsSummaryResponse
 } from "@/api/business-stats";
@@ -41,6 +42,28 @@ describe("formatTimeKey", () => {
     expect(formatTimeKey("20260717", "day")).toBe("2026-07-17");
     expect(formatTimeKey("202607", "month")).toBe("2026-07");
     expect(formatTimeKey("2026", "year")).toBe("2026年");
+  });
+});
+
+describe("countStatsDevices", () => {
+  it("counts unique devices including zero consumption", () => {
+    expect(
+      countStatsDevices([
+        { meterId: 1, totalConsumption: 0 } as any,
+        { meterId: 2, totalConsumption: 1.2 } as any,
+        { meterId: 1, totalConsumption: 0.5 } as any
+      ])
+    ).toBe(2);
+  });
+
+  it("falls back to meterNo when meterId missing", () => {
+    expect(
+      countStatsDevices([
+        { meterNo: "A", totalConsumption: 0 } as any,
+        { meterNo: "B", totalConsumption: 0 } as any,
+        { meterNo: "A", totalConsumption: 3 } as any
+      ])
+    ).toBe(2);
   });
 });
 
