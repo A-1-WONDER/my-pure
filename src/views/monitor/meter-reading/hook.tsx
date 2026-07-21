@@ -68,7 +68,7 @@ export function useMeterReading(_tableRef: Ref) {
       prop: "remark",
       minWidth: 140,
       showOverflowTooltip: true,
-      formatter: ({ remark }) => remark || "—"
+      formatter: () => "定时同步"
     },
     {
       label: "创建时间",

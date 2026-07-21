@@ -19,12 +19,14 @@ export function useCollector(tableRef: Ref) {
   const form = reactive({
     name: "",
     code: "",
+    location: "",
     createTime: null as string[] | null
   });
 
   function applyCollectorSearchParams(params: Record<string, unknown>) {
     if (form.name) params.collectorName = form.name;
     if (form.code) params.collectorNo = form.code;
+    if (form.location) params.location = form.location;
     if (Array.isArray(form.createTime) && form.createTime.length === 2) {
       params.createTime = [
         dayjs(form.createTime[0]).format("YYYY-MM-DD HH:mm:ss"),
