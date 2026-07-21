@@ -7,7 +7,6 @@ import { getPickerShortcuts } from "../utils";
 import { PureTableBar } from "@/components/RePureTableBar";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 
-import Delete from "~icons/ep/delete";
 import Edit from "~icons/ep/edit";
 import Refresh from "~icons/ep/refresh";
 import Download from "~icons/ep/download";
@@ -59,9 +58,7 @@ const {
   onSearch,
   onEdit,
   onBiz,
-  clearAll,
   resetForm,
-  onbatchDel,
   exportExcel,
   handleSizeChange,
   onSelectionCancel,
@@ -176,18 +173,6 @@ onMounted(() => {
     </el-form>
 
     <PureTableBar :title="pageTitle" :columns="columns" @refresh="onSearch">
-      <template #buttons>
-        <el-popconfirm
-          :title="'确定要删除所有' + config.name + '数据吗？'"
-          @confirm="clearAll"
-        >
-          <template #reference>
-            <el-button type="danger" :icon="useRenderIcon(Delete)">
-              清空数据
-            </el-button>
-          </template>
-        </el-popconfirm>
-      </template>
       <template v-slot="{ size, dynamicColumns }">
         <div
           v-if="selectedNum > 0"
@@ -205,11 +190,6 @@ onMounted(() => {
               取消选择
             </el-button>
           </div>
-          <el-popconfirm title="是否确认删除?" @confirm="onbatchDel">
-            <template #reference>
-              <el-button type="danger" text class="mr-1!"> 批量删除 </el-button>
-            </template>
-          </el-popconfirm>
         </div>
         <pure-table
           ref="tableRef"
