@@ -62,6 +62,14 @@ const {
           class="w-[170px]!"
         />
       </el-form-item>
+      <el-form-item label="安装位置" prop="location">
+        <el-input
+          v-model="form.location"
+          placeholder="请输入安装位置"
+          clearable
+          class="w-[170px]!"
+        />
+      </el-form-item>
       <el-form-item label="创建时间" prop="createTime">
         <el-date-picker
           v-model="form.createTime"

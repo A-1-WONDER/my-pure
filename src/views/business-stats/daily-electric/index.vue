@@ -103,6 +103,7 @@ import {
   loadScopedStatsMeters
 } from "../components/stats-meter-utils";
 import {
+  countStatsDevices,
   simpleStatsApi,
   transformStatsData,
   unwrapEnergyStatisticsSummaryResponse,
@@ -135,17 +136,12 @@ const form = reactive({
 const loading = ref(false);
 const dataList = ref<StatsDisplayData[]>([]);
 
+/** 统一口径：设备数 = meterStats 去重条数（含 0 电量），与明细一致 */
 const normalizeDailyDeviceCount = (rows: StatsDisplayData[]) => {
-  return rows.map(row => {
-    const activeCount = (row.meterStats || []).filter(item => {
-      const n = Number(item?.totalConsumption ?? 0);
-      return Number.isFinite(n) && n > 0;
-    }).length;
-    return {
-      ...row,
-      deviceCount: activeCount
-    };
-  });
+  return rows.map(row => ({
+    ...row,
+    deviceCount: countStatsDevices(row.meterStats)
+  }));
 };
 
 const normalizeDateRangeEnds = (a: string, b: string): [string, string] => {
@@ -193,15 +189,12 @@ const loadDailyStatsFromDayPower = async () => {
       (sum, item) => sum + Number(item.totalConsumption || 0),
       0
     );
-    const activeDeviceCount = meterStats.filter(
-      item => Number(item.totalConsumption || 0) > 0
-    ).length;
 
     rows.push({
       timeKey: dayjs(date).format("YYYYMMDD"),
       date,
       totalConsumption: Number(totalConsumption.toFixed(2)),
-      deviceCount: activeDeviceCount,
+      deviceCount: countStatsDevices(meterStats),
       meterStats: meterStats.map(item => ({
         meterId: item.meterId,
         meterNo: item.meterNo,

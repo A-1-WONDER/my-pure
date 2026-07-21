@@ -459,6 +459,34 @@ export const formatTimeKey = (
 };
 
 /**
+ * 统计设备数量统一口径：参与本时段统计的设备数（含 0 电量），按 meterId/meterNo 去重。
+ * 与明细弹窗 mergeDetailRowsByMeterId 的 key 规则保持一致。
+ */
+export const countStatsDevices = (
+  meterStats:
+    | Array<{
+        meterId?: number | string | null;
+        meterNo?: string | null;
+        meterName?: string | null;
+      }>
+    | null
+    | undefined
+): number => {
+  if (!meterStats?.length) return 0;
+  const normalizedKeys = meterStats
+    .map(item => {
+      const rawKey = item?.meterId ?? item?.meterNo ?? item?.meterName;
+      if (rawKey === null || rawKey === undefined) return "";
+      const key = String(rawKey).trim();
+      return key ? `k:${key}` : "";
+    })
+    .filter(Boolean);
+
+  if (normalizedKeys.length === 0) return meterStats.length;
+  return new Set(normalizedKeys).size;
+};
+
+/**
  * 工具函数：将API数据转换为前端展示格式
  */
 export const transformStatsData = (
@@ -470,23 +498,6 @@ export const transformStatsData = (
 
   const result: StatsDisplayData[] = [];
   const { data, dimension } = apiData;
-
-  // 设备数按 meterId 去重；若缺失则回退到 meterNo，避免同设备重复记录被重复计数
-  const getUniqueDeviceCount = (meterStats: MeterStatItem[]) => {
-    const normalizedKeys = meterStats
-      .map(item => {
-        // 与小时明细 mergeRowsByMeterId 的 key 口径保持一致
-        const rawKey = item?.meterId ?? item?.meterNo ?? item?.meterName;
-        if (rawKey === null || rawKey === undefined) return "";
-        const key = String(rawKey).trim();
-        return key ? `k:${key}` : "";
-      })
-      .filter(Boolean);
-
-    // 若接口未返回可用于去重的键，则回退为原始条数，避免显示 0
-    if (normalizedKeys.length === 0) return meterStats.length;
-    return new Set(normalizedKeys).size;
-  };
 
   Object.entries(data).forEach(([timeKey, meterStats]) => {
     // 计算总用电量
@@ -506,7 +517,7 @@ export const transformStatsData = (
       timeKey,
       date,
       totalConsumption: parseFloat(totalConsumption.toFixed(2)),
-      deviceCount: getUniqueDeviceCount(meterStats),
+      deviceCount: countStatsDevices(meterStats),
       meterStats
     };
 

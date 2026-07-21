@@ -104,6 +104,7 @@ import {
 } from "../components/stats-meter-utils";
 import {
   METER_ENRICH_BATCH_SIZE,
+  countStatsDevices,
   extractMonthPowerValueFromResponse,
   getDeviceMonthPower,
   resolveMeterRowDeviceId,
@@ -210,13 +211,18 @@ const loadMonthlyStatsFromMonthPower = async () => {
         const meterNo = String(item.meterNo ?? item.meterName ?? deviceId);
         if (result.status === "fulfilled") {
           const v = result.value.totalConsumption;
-          if (Number.isFinite(v)) {
-            meterStats.push({
-              meterId: deviceId,
-              meterNo,
-              totalConsumption: v
-            });
-          }
+          meterStats.push({
+            meterId: deviceId,
+            meterNo,
+            totalConsumption: Number.isFinite(v) ? v : 0
+          });
+        } else {
+          // 失败设备按 0 计入，保证设备数与参与统计范围一致
+          meterStats.push({
+            meterId: deviceId,
+            meterNo,
+            totalConsumption: 0
+          });
         }
       });
     }
@@ -230,7 +236,7 @@ const loadMonthlyStatsFromMonthPower = async () => {
       timeKey: ym,
       date: dateLabel,
       totalConsumption: Number(totalConsumption.toFixed(2)),
-      deviceCount: meterStats.length,
+      deviceCount: countStatsDevices(meterStats),
       meterStats: meterStats.map(item => ({
         meterId: item.meterId,
         meterNo: item.meterNo,
