@@ -478,10 +478,6 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.main {
-  padding: 24px;
-}
-
 .box-card {
   .card-header {
     display: flex;
