@@ -93,6 +93,10 @@ export function setEnergySummaryCache(
   writeSession(key, entry);
 }
 
+function rowsHavePositiveConsumption(rows: StatsDisplayData[]): boolean {
+  return rows.some(r => Math.abs(Number(r?.totalConsumption ?? 0)) > 1e-9);
+}
+
 async function fetchFreshSummary(
   params: EnergyStatsQueryParams,
   timeoutMs?: number
@@ -100,6 +104,8 @@ async function fetchFreshSummary(
   const key = buildEnergySummaryCacheKey(params);
   const pending = inflight.get(key);
   if (pending) return pending;
+
+  const previous = getEnergySummaryDisplayFromCache(params);
 
   const task = (async () => {
     const response = (await getEnergyStatisticsSummary(
@@ -116,8 +122,18 @@ async function fetchFreshSummary(
     if (Number(payload.status) !== 1) {
       throw new Error(payload.msg || "未获取到用电量汇总数据");
     }
+    const rows = transformStatsData(payload);
+    // 3.2 瞬时失败常返回全 0：保留本地已有非零结果，避免首页闪成空图
+    if (
+      !rowsHavePositiveConsumption(rows) &&
+      previous &&
+      rowsHavePositiveConsumption(previous) &&
+      (params.dimension === "hour" || params.dimension === "day")
+    ) {
+      return previous;
+    }
     setEnergySummaryCache(params, payload);
-    return transformStatsData(payload);
+    return rows;
   })();
 
   inflight.set(key, task);
