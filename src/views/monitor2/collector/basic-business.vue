@@ -20,10 +20,10 @@
           <div class="label text-gray-500 text-sm mb-1">状态</div>
           <div class="value">
             <el-tag
-              :type="info.status === '已连接' ? 'success' : 'danger'"
+              :type="info.status === '在线' ? 'success' : 'warning'"
               size="small"
             >
-              {{ info.status || "已连接" }}
+              {{ info.status || "未知" }}
             </el-tag>
           </div>
         </div>
@@ -127,7 +127,7 @@
             <template #default="{ row }">
               <el-tag
                 size="small"
-                :type="row.status === '在线' ? 'success' : 'danger'"
+                :type="row.status === '在线' ? 'success' : 'warning'"
               >
                 {{ row.status }}
               </el-tag>
@@ -149,6 +149,7 @@ import dayjs from "dayjs";
 import { reactive, ref, watch } from "vue";
 import { getCollectorDetail } from "@/api/collector";
 import { getMeterList, getMetersByCollector } from "@/api/meters";
+import { getOnlineStatusDisplay } from "../utils/device-online-status";
 
 const props = defineProps({
   data: {
@@ -160,6 +161,10 @@ const props = defineProps({
 const emit = defineEmits(["close"]);
 
 const loading = ref(false);
+
+const formatCollectorStatus = status => getOnlineStatusDisplay(status).text;
+
+const formatMeterStatus = status => getOnlineStatusDisplay(status).text;
 
 const formatDuration = (startTime?: string, endTime?: string) => {
   if (!startTime || !endTime) return "";
@@ -191,21 +196,6 @@ const info = reactive({
 });
 
 const connectedDevices = ref([]);
-
-const formatCollectorStatus = status => {
-  if (status === "NORMAL" || status === 1) return "已连接";
-  if (status === "FAULT" || status === "OFFLINE" || status === 0)
-    return "未连接";
-  return status || "未知";
-};
-
-const formatMeterStatus = status => {
-  if (status === "NORMAL" || status === "ONLINE" || status === 0) return "在线";
-  if (status === "1" || status === 1) return "未在线";
-  if (status === "FAULT" || status === "ERROR") return "故障";
-  if (status === "OFFLINE") return "离线";
-  return status || "未知";
-};
 
 const loadCollectorDetail = async collectorId => {
   if (!collectorId) return;
@@ -246,7 +236,7 @@ const loadCollectorDetail = async collectorId => {
       lastStatusChange:
         collectorData?.lastStatusChange ||
         (formatCollectorStatus(collectorData?.status ?? props.data.status) ===
-        "已连接"
+        "在线"
           ? "在线"
           : "离线"),
       totalOnlineTime: collectorData?.totalOnlineTime || "",

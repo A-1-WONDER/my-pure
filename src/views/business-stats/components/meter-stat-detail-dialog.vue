@@ -126,6 +126,10 @@ import {
   resolveDetailArchive
 } from "./meter-stat-detail-enrich";
 import { formatMeterEnergyUnit } from "@/views/monitor2/utils/meter-display";
+import {
+  extractCurrentOnlineStatus,
+  getOnlineStatusDisplay
+} from "@/views/monitor2/utils/device-online-status";
 
 defineOptions({
   name: "MeterStatDetailDialog"
@@ -188,41 +192,8 @@ let collectorByIdCache: Map<
 > | null = null;
 let meterArchiveCacheKey = "";
 
-const statusMap = {
-  "0": { text: "在线", type: "success" },
-  "1": { text: "未在线", type: "warning" },
-  NORMAL: { text: "在线", type: "success" },
-  ONLINE: { text: "在线", type: "success" },
-  FAULT: { text: "故障", type: "danger" },
-  ERROR: { text: "故障", type: "danger" },
-  OFFLINE: { text: "离线", type: "warning" }
-};
-
-const getStatusDisplay = (statusValue?: string | number | null) => {
-  if (statusValue === null || statusValue === undefined || statusValue === "") {
-    return { text: "未知", type: "info" };
-  }
-  return (
-    statusMap[String(statusValue).toUpperCase()] || {
-      text: String(statusValue),
-      type: "info"
-    }
-  );
-};
-
-const extractLastStatus = (response: Record<string, any>) => {
-  return (
-    response?.data?.laststatus ??
-    response?.data?.lastStatus ??
-    response?.data?.data?.laststatus ??
-    response?.data?.data?.lastStatus ??
-    response?.data?.status ??
-    response?.data?.data?.status ??
-    response?.status ??
-    response?.laststatus ??
-    response?.lastStatus
-  );
-};
+const getStatusDisplay = (statusValue?: string | number | null) =>
+  getOnlineStatusDisplay(statusValue);
 
 const extractResponsePayload = (response: Record<string, any>) => {
   return response?.data?.data ?? response?.data ?? response;
@@ -263,7 +234,7 @@ const columns = computed(() => [
     minWidth: 100,
     cellRenderer: scope => {
       const status = getStatusDisplay(
-        scope.row.laststatus ?? scope.row.lastStatus ?? scope.row.status
+        scope.row.onlineStatus ?? scope.row.status ?? scope.row.laststatus
       );
       return h(
         ElTag,
@@ -445,34 +416,34 @@ async function enrichLastStatus(rows: Record<string, any>[]) {
     METER_ENRICH_BATCH_SIZE,
     async row => {
       const response = await getElectricMeterDetails(row.id);
-      const laststatus = extractLastStatus(
+      const onlineStatus = extractCurrentOnlineStatus(
         extractResponsePayload(response as Record<string, any>)
       );
-      return { id: row.id as number, laststatus };
+      return { id: row.id as number, onlineStatus };
     }
   );
 
   const statusMap = new Map<number, string | number>();
   settled.forEach(result => {
     if (result.status !== "fulfilled") return;
-    const { id, laststatus } = result.value;
+    const { id, onlineStatus } = result.value;
     if (
       id != null &&
-      laststatus !== null &&
-      laststatus !== undefined &&
-      laststatus !== ""
+      onlineStatus !== null &&
+      onlineStatus !== undefined &&
+      onlineStatus !== ""
     ) {
-      statusMap.set(id, laststatus);
+      statusMap.set(id, onlineStatus);
     }
   });
 
   if (!statusMap.size) return;
 
   rows.forEach(row => {
-    const laststatus = statusMap.get(row.id);
-    if (laststatus === undefined) return;
-    row.laststatus = laststatus;
-    row.status = laststatus;
+    const onlineStatus = statusMap.get(row.id);
+    if (onlineStatus === undefined) return;
+    row.status = onlineStatus;
+    row.onlineStatus = onlineStatus;
   });
 }
 
@@ -561,7 +532,7 @@ const exportExcel = () => {
     const body = rows.map(item => {
       const collectorText = formatCollectorDisplay(item);
       const statusText = getStatusDisplay(
-        item.laststatus ?? item.lastStatus ?? item.status
+        item.onlineStatus ?? item.status ?? item.laststatus
       ).text;
       const userText = formatMeterEnergyUnit(item);
       const otherParts: string[] = [];

@@ -10,10 +10,17 @@ import {
   getMeterList,
   simpleMeterApi,
   updateMeter,
-  deleteMeters
+  deleteMeters,
+  getElectricMeterDetails
 } from "@/api/meters";
+import { getCollectorList } from "@/api/collector";
 import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
+import {
+  coerceOnlineCode,
+  extractCurrentOnlineStatus,
+  resolveMeterListOnlineDisplay
+} from "../utils/device-online-status";
 
 // 表类型配置
 const meterTypeConfig = {
@@ -167,6 +174,87 @@ function mergeMeterConfig(type: string) {
 export function useMeterTemplate(tableRef: Ref, meterType: string) {
   const config = mergeMeterConfig(meterType);
   const allowDemoFallback = !import.meta.env.PROD;
+  const isElectricMeter = meterType === "electric";
+
+  /** 拉取全量采集器 status，按 id 建表（与采集器管理页同源） */
+  const loadCollectorOnlineMap = async () => {
+    const map = new Map<number, number>();
+    try {
+      const result = (await getCollectorList({
+        page: 1,
+        size: 1000
+      })) as {
+        content?: Record<string, unknown>[];
+      };
+      const rows = Array.isArray(result?.content) ? result.content : [];
+      rows.forEach(item => {
+        const id = Number(item.id);
+        const code = coerceOnlineCode(item.status);
+        if (Number.isFinite(id) && code !== undefined) {
+          map.set(id, code);
+        }
+      });
+    } catch (e) {
+      console.warn("加载采集器在线状态失败，电表将用本地兜底:", e);
+    }
+    return map;
+  };
+
+  /**
+   * 电表在线态 = 所属采集器 status（同源），可选再被详情实时覆盖。
+   * 写入 onlineCode，避免和库表启用 status 混淆。
+   */
+  const loadOnlineStatusForMeters = async (meters: any[]) => {
+    if (!meters.length || !isElectricMeter) return meters;
+
+    const collectorOnline = await loadCollectorOnlineMap();
+
+    const withCollector = meters.map(meter => {
+      const collectorId = Number(meter?.collectorId);
+      const fromCollector = Number.isFinite(collectorId)
+        ? collectorOnline.get(collectorId)
+        : undefined;
+      const signalOnline = Number(meter?.signalStrength) > 0 ? 1 : undefined;
+      const onlineCode =
+        fromCollector !== undefined
+          ? fromCollector
+          : signalOnline !== undefined
+            ? signalOnline
+            : 0;
+      return {
+        ...meter,
+        collectorOnline: fromCollector,
+        onlineCode,
+        commsStatus: onlineCode
+      };
+    });
+
+    void Promise.allSettled(
+      withCollector.map(async meter => {
+        const meterId = Number(meter?.id ?? meter?.meterId);
+        if (!Number.isFinite(meterId)) return;
+        try {
+          const response = await getElectricMeterDetails(meterId);
+          const onlineStatus = extractCurrentOnlineStatus(
+            response as Record<string, unknown>
+          );
+          if (onlineStatus === undefined) return;
+          dataList.value = dataList.value.map(row => {
+            if (Number(row.id ?? row.meterId) !== meterId) return row;
+            return {
+              ...row,
+              onlineCode: onlineStatus,
+              commsStatus: onlineStatus
+            };
+          });
+        } catch {
+          // ignore
+        }
+      })
+    );
+
+    return withCollector;
+  };
 
   const form = reactive({
     meterNo: "",
@@ -227,18 +315,10 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       },
       {
         label: "在线状态",
-        prop: "status",
+        prop: "onlineCode",
         minWidth: 100,
         cellRenderer: scope => {
-          const statusMap = {
-            NORMAL: { text: "在线", type: "success" },
-            FAULT: { text: "故障", type: "danger" },
-            OFFLINE: { text: "离线", type: "warning" }
-          };
-          const status = statusMap[scope.row.status] || {
-            text: "未知",
-            type: "info"
-          };
+          const status = resolveMeterListOnlineDisplay(scope.row);
           return (
             <el-tag size={scope.props.size} type={status.type} effect="plain">
               {status.text}
@@ -348,14 +428,8 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       // 排除勾选列和操作列
       columns.forEach(column => {
         if (column.type !== "selection" && column.slot !== "operation") {
-          if (column.prop === "status") {
-            // 处理在线状态
-            const statusMap = {
-              NORMAL: "在线",
-              FAULT: "故障",
-              OFFLINE: "离线"
-            };
-            arr.push(statusMap[item[column.prop]] || "未知");
+          if (column.prop === "onlineCode" || column.prop === "status") {
+            arr.push(resolveMeterListOnlineDisplay(item).text);
           } else if (column.prop === "collectorId") {
             // 处理采集器
             arr.push(
@@ -681,6 +755,10 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           pagination.total = 0;
         }
 
+        if (dataList.value.length > 0 && isElectricMeter) {
+          dataList.value = await loadOnlineStatusForMeters([...dataList.value]);
+        }
+
         // 如果数据为空，显示提示
         if (dataList.value.length === 0) {
           message(`暂无${config.name}数据`, { type: "info" });
@@ -740,7 +818,9 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           );
         }
 
-        dataList.value = filteredData;
+        dataList.value = isElectricMeter
+          ? await loadOnlineStatusForMeters(filteredData)
+          : filteredData;
         pagination.total = filteredData.length;
         pagination.pageSize = 10;
         pagination.currentPage = 1;
