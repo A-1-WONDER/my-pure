@@ -149,7 +149,10 @@ import dayjs from "dayjs";
 import { reactive, ref, watch } from "vue";
 import { getCollectorDetail } from "@/api/collector";
 import { getMeterList, getMetersByCollector } from "@/api/meters";
-import { getOnlineStatusDisplay } from "../utils/device-online-status";
+import {
+  getOnlineStatusDisplay,
+  resolveMeterListOnlineDisplay
+} from "../utils/device-online-status";
 
 const props = defineProps({
   data: {
@@ -164,7 +167,14 @@ const loading = ref(false);
 
 const formatCollectorStatus = status => getOnlineStatusDisplay(status).text;
 
-const formatMeterStatus = status => getOnlineStatusDisplay(status).text;
+const formatMeterStatus = (rowOrStatus: unknown) => {
+  if (rowOrStatus && typeof rowOrStatus === "object") {
+    return resolveMeterListOnlineDisplay(rowOrStatus as Record<string, unknown>)
+      .text;
+  }
+  return getOnlineStatusDisplay(rowOrStatus as string | number | boolean | null)
+    .text;
+};
 
 const formatDuration = (startTime?: string, endTime?: string) => {
   if (!startTime || !endTime) return "";
@@ -268,7 +278,11 @@ const loadCollectorDetail = async collectorId => {
       deviceNo: item.meterNo,
       lastCommunication:
         item.lastReadingTime || item.updatedAt || item.createdAt || "-",
-      status: formatMeterStatus(item.laststatus ?? item.status)
+      // 与采集器页一致：下属电表在线态跟随本采集器 status
+      status: formatMeterStatus({
+        ...item,
+        collectorOnline: collectorData?.status ?? info.status ?? item.status
+      })
     }));
 
     info.meterCount = Array.isArray(meterListData)

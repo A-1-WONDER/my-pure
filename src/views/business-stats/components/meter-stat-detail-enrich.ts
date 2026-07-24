@@ -85,8 +85,11 @@ export function buildDetailRowFromMeterStat(
     collectorId,
     collectorName: archive?.collectorName || collectorInfo?.label || undefined,
     collectorNo: archive?.collectorNo || archive?.code || undefined,
-    status: archive?.laststatus ?? archive?.lastStatus ?? archive?.status,
-    laststatus: archive?.laststatus ?? archive?.lastStatus,
+    // 勿用 lastStatus 冒充当前在线；在线态由 stampMetersWithCollectorOnline / 详情写入 onlineCode
+    onlineStatus: archive?.onlineStatus,
+    onlineCode: archive?.onlineCode,
+    collectorOnline: archive?.collectorOnline,
+    status: archive?.status,
     signalStrength: archive?.signalStrength,
     meterAddress: collectorInfo?.installAddress || undefined,
     userId: archive?.userId,
@@ -130,9 +133,13 @@ export function mergeDetailRowsByMeterId(rows: Record<string, any>[]) {
       existing.collectorName = row.collectorName;
     if (!existing.collectorNo && row.collectorNo)
       existing.collectorNo = row.collectorNo;
-    if (!existing.status && row.status) existing.status = row.status;
-    if (!existing.laststatus && row.laststatus)
-      existing.laststatus = row.laststatus;
+    if (!existing.onlineCode && row.onlineCode != null)
+      existing.onlineCode = row.onlineCode;
+    if (!existing.collectorOnline && row.collectorOnline != null)
+      existing.collectorOnline = row.collectorOnline;
+    if (existing.onlineStatus == null && row.onlineStatus != null)
+      existing.onlineStatus = row.onlineStatus;
+    if (!existing.status && row.status != null) existing.status = row.status;
     if (!existing.signalStrength && row.signalStrength)
       existing.signalStrength = row.signalStrength;
     if (!existing.meterAddress && row.meterAddress)

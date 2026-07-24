@@ -79,6 +79,7 @@ onMounted(() => {
       :inline="true"
       :model="form"
       class="search-form bg-bg_color w-full pl-8 pt-[12px] overflow-auto"
+      @submit.prevent
     >
       <el-form-item label="标签" prop="meterNo">
         <el-input
@@ -86,14 +87,16 @@ onMounted(() => {
           placeholder="请输入电表标签"
           clearable
           class="w-[170px]!"
+          @keyup.enter="onSearch({ resetPage: true })"
         />
       </el-form-item>
       <el-form-item label="模糊搜索" prop="blurry">
         <el-input
           v-model="form.blurry"
-          placeholder="表号关键词"
+          placeholder="表号/备注/采集器"
           clearable
-          class="w-[170px]!"
+          class="w-[200px]!"
+          @keyup.enter="onSearch({ resetPage: true })"
         />
       </el-form-item>
       <el-form-item label="在线状态" prop="status">

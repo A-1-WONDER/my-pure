@@ -19,9 +19,12 @@ import { getCollectorList } from "@/api/collector";
 import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
 import {
-  coerceOnlineCode,
+  buildCollectorOnlineMap,
   extractCurrentOnlineStatus,
-  resolveMeterListOnlineDisplay
+  meterRowMatchesOnlineFilter,
+  resolveMeterListOnlineDisplay,
+  stampMetersWithCollectorOnline,
+  unwrapCollectorListRows
 } from "../utils/device-online-status";
 
 const electricMeterConfig = getMeterTypeConfig("electric");
@@ -31,26 +34,16 @@ export function useElectricMeter(tableRef: Ref) {
 
   /** 拉取全量采集器 status，按 id 建表（与采集器管理页同源） */
   const loadCollectorOnlineMap = async () => {
-    const map = new Map<number, number>();
     try {
       const result = (await getCollectorList({
         page: 1,
         size: 1000
-      })) as {
-        content?: Record<string, unknown>[];
-      };
-      const rows = Array.isArray(result?.content) ? result.content : [];
-      rows.forEach(item => {
-        const id = Number(item.id);
-        const code = coerceOnlineCode(item.status);
-        if (Number.isFinite(id) && code !== undefined) {
-          map.set(id, code);
-        }
-      });
+      })) as Record<string, unknown>;
+      return buildCollectorOnlineMap(unwrapCollectorListRows(result));
     } catch (e) {
       console.warn("加载采集器在线状态失败，电表将用本地兜底:", e);
+      return new Map<number, number>();
     }
-    return map;
   };
 
   /**
@@ -61,27 +54,10 @@ export function useElectricMeter(tableRef: Ref) {
     if (!meters.length) return meters;
 
     const collectorOnline = await loadCollectorOnlineMap();
-
-    const withCollector = meters.map(meter => {
-      const collectorId = Number(meter?.collectorId);
-      const fromCollector = Number.isFinite(collectorId)
-        ? collectorOnline.get(collectorId)
-        : undefined;
-      const signalOnline = Number(meter?.signalStrength) > 0 ? 1 : undefined;
-      const onlineCode =
-        fromCollector !== undefined
-          ? fromCollector
-          : signalOnline !== undefined
-            ? signalOnline
-            : 0;
-      return {
-        ...meter,
-        collectorOnline: fromCollector,
-        onlineCode,
-        // 列表「在线状态」列读 onlineCode；勿覆盖库表启用 status 语义时可并存
-        commsStatus: onlineCode
-      };
-    });
+    const withCollector = stampMetersWithCollectorOnline(
+      meters,
+      collectorOnline
+    );
 
     // 后台用详情微调（不阻塞首屏）；失败则保持采集器态
     void Promise.allSettled(
@@ -542,14 +518,15 @@ export function useElectricMeter(tableRef: Ref) {
     loading.value = true;
 
     try {
+      // 在线筛选走采集器口径，勿把 NORMAL/OFFLINE 传给后端 Integer status（会 400）
+      const onlineFilter = form.status;
       const requestParams: Record<string, unknown> = {
-        page: pagination.currentPage,
-        size: pagination.pageSize
+        page: onlineFilter ? 1 : pagination.currentPage,
+        size: onlineFilter ? 10000 : pagination.pageSize
       };
       if (form.meterNo) requestParams.meterNo = form.meterNo;
       if (form.blurry) requestParams.blurry = form.blurry;
       if (form.meterType) requestParams.meterType = form.meterType;
-      if (form.status) requestParams.status = form.status;
       if (form.collectorId) requestParams.collectorId = form.collectorId;
       if (form.userId) requestParams.userId = form.userId;
       if (form.enabled !== undefined && form.enabled !== null) {
@@ -579,12 +556,14 @@ export function useElectricMeter(tableRef: Ref) {
       if (response?.success !== undefined) {
         if (response.success && response.data) {
           rows = response.data.content || [];
-          pagination.total = response.data.totalElements || 0;
-          pagination.pageSize = response.data?.size ?? pagination.pageSize;
-          if (response.data?.number !== undefined) {
-            pagination.currentPage = response.data.number + 1;
-          } else if (requestParams.page !== undefined) {
-            pagination.currentPage = Number(requestParams.page) || 1;
+          if (!onlineFilter) {
+            pagination.total = response.data.totalElements || 0;
+            pagination.pageSize = response.data?.size ?? pagination.pageSize;
+            if (response.data?.number !== undefined) {
+              pagination.currentPage = response.data.number + 1;
+            } else if (requestParams.page !== undefined) {
+              pagination.currentPage = Number(requestParams.page) || 1;
+            }
           }
         } else {
           message(response?.message || "查询失败", { type: "error" });
@@ -596,16 +575,20 @@ export function useElectricMeter(tableRef: Ref) {
       } else if (response?.content !== undefined) {
         // Spring PageResult：{ content, totalElements, ... }
         rows = response.content || [];
-        pagination.total = response.totalElements || 0;
-        pagination.pageSize = response?.size ?? pagination.pageSize;
-        if (response?.number !== undefined) {
-          pagination.currentPage = response.number + 1;
-        } else if (requestParams.page !== undefined) {
-          pagination.currentPage = Number(requestParams.page) || 1;
+        if (!onlineFilter) {
+          pagination.total = response.totalElements || 0;
+          pagination.pageSize = response?.size ?? pagination.pageSize;
+          if (response?.number !== undefined) {
+            pagination.currentPage = response.number + 1;
+          } else if (requestParams.page !== undefined) {
+            pagination.currentPage = Number(requestParams.page) || 1;
+          }
         }
       } else if (Array.isArray(response?.data?.content)) {
         rows = response.data.content;
-        pagination.total = response.data.totalElements || 0;
+        if (!onlineFilter) {
+          pagination.total = response.data.totalElements || 0;
+        }
       } else {
         console.warn("未知的电表列表响应格式:", response);
         message("查询失败，响应格式异常", { type: "error" });
@@ -614,7 +597,17 @@ export function useElectricMeter(tableRef: Ref) {
         return;
       }
 
-      dataList.value = await loadOnlineStatusForMeters(rows);
+      rows = await loadOnlineStatusForMeters(rows);
+      if (onlineFilter) {
+        rows = rows.filter(row =>
+          meterRowMatchesOnlineFilter(row, onlineFilter)
+        );
+        pagination.total = rows.length;
+        const start = (pagination.currentPage - 1) * pagination.pageSize;
+        dataList.value = rows.slice(start, start + pagination.pageSize);
+      } else {
+        dataList.value = rows;
+      }
       if (dataList.value.length === 0) {
         message("暂无电表数据", { type: "info" });
       }

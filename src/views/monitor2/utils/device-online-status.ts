@@ -4,6 +4,11 @@
  * 采集器库表 status：0 离线、1 在线
  * 3.2 设备 status：0 离线、1 在线、2 待机、3 故障…
  * ElectricMeterDto.onlineStatus 是 Boolean，需转成 0/1
+ *
+ * 展示优先级（本项目落地方案）：
+ *   1. 实时 onlineCode / boxStatus / deviceStatus / onlineStatus
+ *   2. 所属采集器 collectorOnline（库表 status）
+ * 禁止：signalStrength（库默认常为 25）、meters.status（启用位）、lastStatus、用「有无电量」代替在线。
  */
 
 export type OnlineTagType = "success" | "warning" | "danger" | "info";
@@ -86,8 +91,8 @@ export function coerceOnlineCode(value: unknown): number | undefined {
 
 /**
  * 电表列表专用：与采集器页同步。
- * 优先 onlineCode → 采集器态 → 详情态 → 信号兜底。
- * 永不返回「未知」：实在没有线索时显示离线。
+ * 优先实时态 → 采集器态；永不返回「未知」；无线索则离线。
+ * 明确忽略 lastStatus / signalStrength / meters 启用 status。
  */
 export function resolveMeterListOnlineDisplay(
   row: Record<string, unknown> | null | undefined
@@ -96,12 +101,12 @@ export function resolveMeterListOnlineDisplay(
 
   const candidates = [
     row.onlineCode,
-    row.collectorOnline,
     row.deviceStatus,
     row.boxStatus,
     row.boxstatus,
     row.commsStatus,
-    row.onlineStatus
+    row.onlineStatus,
+    row.collectorOnline
   ];
 
   for (const v of candidates) {
@@ -109,16 +114,6 @@ export function resolveMeterListOnlineDisplay(
     if (code !== undefined) {
       return getOnlineStatusDisplay(code);
     }
-  }
-
-  const signal = Number(row.signalStrength);
-  if (Number.isFinite(signal) && signal > 0) {
-    return STATUS_DISPLAY["1"];
-  }
-
-  const statusCode = coerceOnlineCode(row.status);
-  if (statusCode !== undefined) {
-    return getOnlineStatusDisplay(statusCode);
   }
 
   return STATUS_DISPLAY["0"];
@@ -130,13 +125,12 @@ export function pickCurrentOnlineStatus(
   if (!row) return undefined;
   const preferred = [
     row.onlineCode,
-    row.collectorOnline,
     row.deviceStatus,
     row.boxStatus,
     row.boxstatus,
     row.commsStatus,
     row.onlineStatus,
-    row.status
+    row.collectorOnline
   ];
   for (const v of preferred) {
     const code = coerceOnlineCode(v);
@@ -162,4 +156,108 @@ export function extractCurrentOnlineStatus(
     if (code !== undefined) return code;
   }
   return undefined;
+}
+
+/** 从采集器列表响应解出 content */
+export function unwrapCollectorListRows(
+  result: Record<string, unknown> | null | undefined
+): Record<string, unknown>[] {
+  if (!result) return [];
+  const layers = [
+    result,
+    result.data as Record<string, unknown> | undefined,
+    (result.data as Record<string, unknown> | undefined)?.data as
+      | Record<string, unknown>
+      | undefined
+  ];
+  for (const layer of layers) {
+    if (!layer || typeof layer !== "object") continue;
+    const content = (layer as { content?: unknown }).content;
+    if (Array.isArray(content)) return content as Record<string, unknown>[];
+    const list = (layer as { list?: unknown }).list;
+    if (Array.isArray(list)) return list as Record<string, unknown>[];
+  }
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  return [];
+}
+
+/**
+ * 用采集器库表 status 生成 id → 在线码（与采集器管理页同源）。
+ * 供电表管理、用量明细等共用，保证全站一致。
+ */
+export function buildCollectorOnlineMap(
+  collectors: Record<string, unknown>[]
+): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const item of collectors) {
+    const id = Number(item.id ?? item.collectorId);
+    const code = coerceOnlineCode(item.status);
+    if (Number.isFinite(id) && code !== undefined) {
+      map.set(id, code);
+    }
+  }
+  return map;
+}
+
+/**
+ * 给电表行写入 onlineCode / collectorOnline。
+ * 优先级：电表实时 onlineStatus/boxStatus/onlineCode → 所属采集器 status → 离线。
+ * 不用信号强度；有用量不等于在线。
+ */
+export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
+  meters: T[],
+  collectorOnline: Map<number, number>
+): T[] {
+  return meters.map(meter => {
+    const collectorId = Number(meter?.collectorId);
+    const fromCollector = Number.isFinite(collectorId)
+      ? collectorOnline.get(collectorId)
+      : undefined;
+
+    const hasOnlineStatusField =
+      meter?.onlineStatus !== null && meter?.onlineStatus !== undefined;
+    const fromRealtime =
+      coerceOnlineCode(meter?.onlineCode) ??
+      (hasOnlineStatusField
+        ? coerceOnlineCode(meter.onlineStatus)
+        : undefined) ??
+      coerceOnlineCode(meter?.boxStatus) ??
+      coerceOnlineCode(meter?.boxstatus) ??
+      coerceOnlineCode(meter?.deviceStatus);
+
+    const onlineCode =
+      fromRealtime !== undefined
+        ? fromRealtime
+        : fromCollector !== undefined
+          ? fromCollector
+          : 0;
+    return {
+      ...meter,
+      collectorOnline: fromCollector,
+      onlineCode,
+      commsStatus: onlineCode
+    };
+  });
+}
+
+/** 筛选项 NORMAL/FAULT/OFFLINE 或数字码 → 是否匹配行展示态 */
+export function meterRowMatchesOnlineFilter(
+  row: Record<string, unknown>,
+  filterValue: string | number | null | undefined
+): boolean {
+  if (filterValue === null || filterValue === undefined || filterValue === "") {
+    return true;
+  }
+  const display = resolveMeterListOnlineDisplay(row);
+  const key = String(filterValue).trim().toUpperCase();
+  if (key === "NORMAL" || key === "ONLINE" || key === "1") {
+    return display.text === "在线";
+  }
+  if (key === "OFFLINE" || key === "0") {
+    return display.text === "离线";
+  }
+  if (key === "FAULT" || key === "ERROR" || key === "3") {
+    return display.text === "故障";
+  }
+  return display.text === getOnlineStatusDisplay(filterValue).text;
 }
