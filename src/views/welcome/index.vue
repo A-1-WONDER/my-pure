@@ -532,8 +532,9 @@ const setupOnlineChartResizeObserver = () => {
   syncOnlineChartHeight();
 };
 
-onMounted(async () => {
-  await loadCollectorStats();
+onMounted(() => {
+  // 并行：勿先 await 采集器，否则 KPI/报警被挡住数秒
+  loadCollectorStats();
   loadSystemRegionInfo();
   loadPowerSummary();
   loadAlarmTimeline();
@@ -542,9 +543,10 @@ onMounted(async () => {
   loginTimeTimer = setInterval(() => {
     loginTimeTick.value++;
   }, 1000);
-  await nextTick();
-  setupOnlineChartResizeObserver();
-  setupAlarmLayoutObserver();
+  void nextTick().then(() => {
+    setupOnlineChartResizeObserver();
+    setupAlarmLayoutObserver();
+  });
 });
 
 watch([collectorLoading, mailTrendLoading], async () => {
