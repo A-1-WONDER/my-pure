@@ -101,6 +101,25 @@ describe("device-online-status", () => {
     expect(resolveMeterListOnlineDisplay(rows[2]).text).toBe("离线");
   });
 
+  it("preferCollector follows collector status over stale meter onlineCode", () => {
+    const map = buildCollectorOnlineMap([
+      { id: 10, status: 1 },
+      { id: 11, status: 0 }
+    ]);
+    const rows = stampMetersWithCollectorOnline(
+      [
+        { id: 1, collectorId: 10, onlineCode: 0, onlineStatus: false },
+        { id: 2, collectorId: 11, onlineCode: 1, onlineStatus: true },
+        { id: 3, collectorId: 99, onlineCode: 1 }
+      ],
+      map,
+      { preferCollector: true }
+    );
+    expect(resolveMeterListOnlineDisplay(rows[0]).text).toBe("在线");
+    expect(resolveMeterListOnlineDisplay(rows[1]).text).toBe("离线");
+    expect(resolveMeterListOnlineDisplay(rows[2]).text).toBe("在线");
+  });
+
   it("matches filter NORMAL/OFFLINE against display text", () => {
     expect(meterRowMatchesOnlineFilter({ onlineCode: 1 }, "NORMAL")).toBe(true);
     expect(meterRowMatchesOnlineFilter({ onlineCode: 0 }, "OFFLINE")).toBe(

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { message } from "@/utils/message";
 import {
   getPartnerIntegration,
-  savePartnerUsername,
   type PartnerApiItem,
+  type PartnerErrorCodeItem,
   type PartnerIntegrationInfo
 } from "@/api/external-auth";
 
@@ -13,36 +12,54 @@ defineOptions({
   name: "PermissionPage"
 });
 
-const router = useRouter();
 const loading = ref(false);
-const saving = ref(false);
 const copying = ref(false);
 
 const info = ref<PartnerIntegrationInfo>({
   baseUrl: "",
+  apiPrefix: "/api/open/v1",
+  docVersion: "客户版 v1",
   apiDocUrl: "",
-  partnerUsername: "partner_api",
+  enabled: null,
+  appId: "",
+  tokenTtlSeconds: null,
   authHeader: "Authorization",
   tokenPrefix: "Bearer",
   loginHint: "",
+  noticeHint: "",
+  errorCodes: [],
   apis: []
 });
 
-const partnerUsername = ref("partner_api");
-
 const apiRows = computed(() => info.value.apis || []);
+const errorRows = computed(() => info.value.errorCodes || []);
+
+const enabledTag = computed(() => {
+  if (info.value.enabled === true) {
+    return { type: "success" as const, text: "已启用" };
+  }
+  if (info.value.enabled === false) {
+    return { type: "danger" as const, text: "未启用" };
+  }
+  return { type: "info" as const, text: "未知" };
+});
 
 function applyInfo(data?: Partial<PartnerIntegrationInfo>) {
   info.value = {
     baseUrl: data?.baseUrl || "",
+    apiPrefix: data?.apiPrefix || "/api/open/v1",
+    docVersion: data?.docVersion || "客户版 v1",
     apiDocUrl: data?.apiDocUrl || "",
-    partnerUsername: data?.partnerUsername || "partner_api",
+    enabled: data?.enabled ?? null,
+    appId: data?.appId || "",
+    tokenTtlSeconds: data?.tokenTtlSeconds ?? null,
     authHeader: data?.authHeader || "Authorization",
     tokenPrefix: data?.tokenPrefix || "Bearer",
     loginHint: data?.loginHint || "",
+    noticeHint: data?.noticeHint || "",
+    errorCodes: Array.isArray(data?.errorCodes) ? data!.errorCodes! : [],
     apis: Array.isArray(data?.apis) ? data!.apis! : []
   };
-  partnerUsername.value = info.value.partnerUsername;
 }
 
 const loadInfo = async () => {
@@ -51,7 +68,7 @@ const loadInfo = async () => {
     const res = (await getPartnerIntegration()) as Record<string, any>;
     const ok = res?.code === 0 || res?.success === true;
     const data = (res?.data ?? res) as PartnerIntegrationInfo;
-    if (ok || data?.baseUrl) {
+    if (ok || data?.baseUrl || data?.apiPrefix) {
       applyInfo(data);
       return;
     }
@@ -65,50 +82,37 @@ const loadInfo = async () => {
   }
 };
 
-const handleSave = async () => {
-  const name = partnerUsername.value.trim();
-  if (!name) {
-    message("请填写对接账号用户名", { type: "warning" });
-    return;
-  }
-  saving.value = true;
-  try {
-    const res = (await savePartnerUsername(name)) as Record<string, any>;
-    const ok = res?.code === 0 || res?.success === true;
-    const data = (res?.data ?? res) as PartnerIntegrationInfo;
-    if (ok || data?.partnerUsername) {
-      applyInfo(data);
-      message("对接账号名已保存", { type: "success" });
-    } else {
-      message(String(res?.msg ?? res?.message ?? "保存失败"), {
-        type: "warning"
-      });
-    }
-  } catch {
-    message("保存失败，请稍后重试", { type: "error" });
-  } finally {
-    saving.value = false;
-  }
-};
-
 function buildGuideText(): string {
   const i = info.value;
   const lines: string[] = [
-    "【接口权限 / 对接说明】",
+    "【开放接口对接说明】",
+    `文档版本: ${i.docVersion || "客户版 v1"}`,
     "",
     `Base URL: ${i.baseUrl || "（请确认后端地址）"}`,
-    `在线文档: ${i.apiDocUrl || ""}`,
-    `对接账号: ${partnerUsername.value.trim() || i.partnerUsername}`,
+    `接口前缀: ${i.apiPrefix || "/api/open/v1"}`,
+    `开放接口: ${i.enabled === true ? "已启用" : i.enabled === false ? "未启用" : "未知"}`,
+    `appId: ${i.appId || "（配置侧发放）"}`,
+    `Token 有效期: ${i.tokenTtlSeconds != null ? `${i.tokenTtlSeconds} 秒` : "（见配置）"}`,
+    `文档: ${i.apiDocUrl || "以交付《开放接口对接文档（客户版）v1》为准"}`,
     "",
     "鉴权方式:",
-    i.loginHint || "登录获取 token，请求头 Authorization: Bearer <token>",
-    `请求头: ${i.authHeader}: ${i.tokenPrefix} <token>`,
+    i.loginHint ||
+      "POST /api/open/v1/auth/token 换票，后续 Authorization: Bearer <accessToken>",
+    `请求头: ${i.authHeader}: ${i.tokenPrefix} <accessToken>`,
     "",
-    "可调用接口:"
+    "错误码:"
   ];
+  (i.errorCodes || []).forEach((e: PartnerErrorCodeItem) => {
+    lines.push(`- ${e.code} (HTTP ${e.http}): ${e.meaning || ""}`);
+  });
+  if (i.noticeHint) {
+    lines.push("", "注意:", i.noticeHint);
+  }
+  lines.push("", "可调用接口:");
   (i.apis || []).forEach((api: PartnerApiItem) => {
     lines.push(`- ${api.method} ${api.path}  ${api.description || ""}`);
   });
+  lines.push("", "appSecret 由我方单独发放，本文不包含密钥。");
   return lines.join("\n");
 }
 
@@ -134,12 +138,6 @@ const handleCopy = async () => {
   }
 };
 
-const goUserManage = () => {
-  router.push("/system/user").catch(() => {
-    message("请到「系统 → 用户」创建同名对接账号并赋权", { type: "info" });
-  });
-};
-
 onMounted(() => {
   void loadInfo();
 });
@@ -151,74 +149,90 @@ onMounted(() => {
       <template #header>
         <div class="partner-header">
           <div>
-            <h2 class="partner-title">接口权限</h2>
+            <h2 class="partner-title">开放接口对接</h2>
+            <p class="partner-subtitle">
+              摘要页，权威说明以交付《开放接口对接文档（客户版）v1》为准；不展示
+              appSecret。
+            </p>
           </div>
-          <el-tag type="success" effect="plain" size="large">仅本系统</el-tag>
+          <el-tag type="success" effect="plain" size="large">
+            {{ info.docVersion || "客户版 v1" }}
+          </el-tag>
         </div>
       </template>
 
       <div class="partner-body">
         <section class="partner-section">
-          <div class="partner-section__title">接入地址</div>
+          <div class="partner-section__title">接入概览</div>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="Base URL">
               <span class="mono">{{ info.baseUrl || "—" }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="在线文档">
-              <el-link
-                v-if="info.apiDocUrl"
-                :href="info.apiDocUrl"
-                type="primary"
-                target="_blank"
-                underline="never"
-                class="mono"
-              >
-                {{ info.apiDocUrl }}
-              </el-link>
+            <el-descriptions-item label="接口前缀">
+              <span class="mono">{{ info.apiPrefix || "/api/open/v1" }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="开放接口">
+              <el-tag :type="enabledTag.type" effect="plain" size="small">
+                {{ enabledTag.text }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="appId">
+              <span class="mono">{{ info.appId || "—" }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="Token 有效期">
+              <span v-if="info.tokenTtlSeconds != null">
+                {{ info.tokenTtlSeconds }} 秒
+              </span>
               <span v-else>—</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="文档">
+              <span>{{ info.apiDocUrl || "—" }}</span>
             </el-descriptions-item>
           </el-descriptions>
         </section>
 
         <section class="partner-section">
-          <div class="partner-section__title">对接账号</div>
-          <div class="partner-account">
-            <el-input
-              v-model="partnerUsername"
-              placeholder="如 partner_api"
-              class="partner-account__input"
-              clearable
-            />
-            <el-button type="primary" :loading="saving" @click="handleSave">
-              保存账号名
-            </el-button>
-            <el-button @click="goUserManage">去创建用户</el-button>
-          </div>
-        </section>
-
-        <section class="partner-section">
           <div class="partner-section__title">鉴权步骤</div>
           <ol class="partner-steps">
-            <li><code>GET /auth/code</code> 获取验证码</li>
             <li>
-              <code>POST /auth/login</code> 登录（密码 RSA
-              加密，与前端一致）拿到 token
+              <code>POST /api/open/v1/auth/token</code>
+              ，JSON 体传入
+              <code>appId</code>、<code>appSecret</code>
+              换取
+              <code>accessToken</code>
             </li>
             <li>
               后续请求头：
               <code
                 >{{ info.authHeader }}:
-                {{ info.tokenPrefix }} &lt;token&gt;</code
+                {{ info.tokenPrefix }} &lt;accessToken&gt;</code
               >
             </li>
+            <li>
+              Token 无效或过期 →
+              <code>HTTP 401</code> / <code>code=40101</code>，请重新换票
+            </li>
           </ol>
+          <p v-if="info.loginHint" class="partner-hint">{{ info.loginHint }}</p>
+        </section>
+
+        <section class="partner-section">
+          <div class="partner-section__title">错误码</div>
+          <el-table :data="errorRows" border stripe style="width: 100%">
+            <el-table-column prop="code" label="code" width="100" />
+            <el-table-column prop="http" label="HTTP" width="90" />
+            <el-table-column prop="meaning" label="含义" min-width="220" />
+          </el-table>
+          <p v-if="info.noticeHint" class="partner-hint">
+            {{ info.noticeHint }}
+          </p>
         </section>
 
         <section class="partner-section">
           <div class="partner-section__title">可调用接口</div>
           <el-table :data="apiRows" border stripe style="width: 100%">
             <el-table-column prop="method" label="方法" width="90" />
-            <el-table-column prop="path" label="路径" min-width="280">
+            <el-table-column prop="path" label="路径" min-width="320">
               <template #default="{ row }">
                 <span class="mono">{{ row.path }}</span>
               </template>
@@ -310,18 +324,6 @@ onMounted(() => {
   font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-.partner-account {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.partner-account__input {
-  width: 240px;
-  max-width: 100%;
 }
 
 .partner-hint {

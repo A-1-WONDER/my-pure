@@ -199,15 +199,27 @@ export function buildCollectorOnlineMap(
   return map;
 }
 
+export type StampMetersOnlineOptions = {
+  /**
+   * true：与首页采集器在线口径对齐，优先所属采集器 status。
+   * 用于用量统计电表明细，避免档案里陈旧 onlineCode=0 盖过采集器在线。
+   * false/默认：电表管理等场景，仍优先电表实时态。
+   */
+  preferCollector?: boolean;
+};
+
 /**
  * 给电表行写入 onlineCode / collectorOnline。
- * 优先级：电表实时 onlineStatus/boxStatus/onlineCode → 所属采集器 status → 离线。
+ * 默认优先级：电表实时 onlineStatus/boxStatus/onlineCode → 所属采集器 status → 离线。
+ * preferCollector 时：所属采集器 status → 电表实时 → 离线。
  * 不用信号强度；有用量不等于在线。
  */
 export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
   meters: T[],
-  collectorOnline: Map<number, number>
+  collectorOnline: Map<number, number>,
+  options?: StampMetersOnlineOptions
 ): T[] {
+  const preferCollector = options?.preferCollector === true;
   return meters.map(meter => {
     const collectorId = Number(meter?.collectorId);
     const fromCollector = Number.isFinite(collectorId)
@@ -225,16 +237,29 @@ export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
       coerceOnlineCode(meter?.boxstatus) ??
       coerceOnlineCode(meter?.deviceStatus);
 
-    const onlineCode =
-      fromRealtime !== undefined
-        ? fromRealtime
-        : fromCollector !== undefined
+    let onlineCode = 0;
+    if (preferCollector) {
+      onlineCode =
+        fromCollector !== undefined
           ? fromCollector
-          : 0;
+          : fromRealtime !== undefined
+            ? fromRealtime
+            : 0;
+    } else {
+      onlineCode =
+        fromRealtime !== undefined
+          ? fromRealtime
+          : fromCollector !== undefined
+            ? fromCollector
+            : 0;
+    }
+
     return {
       ...meter,
       collectorOnline: fromCollector,
       onlineCode,
+      // 与最终展示码对齐，避免档案 onlineStatus:false 残留干扰
+      onlineStatus: onlineCode === 1,
       commsStatus: onlineCode
     };
   });

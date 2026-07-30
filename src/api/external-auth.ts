@@ -1,37 +1,41 @@
 import { http } from "@/utils/http";
 import type { Result } from "@/api/types";
 
-/** 对外可调用接口项 */
+/** 开放接口可调用项 */
 export interface PartnerApiItem {
   method: string;
   path: string;
   description: string;
 }
 
-/** 对外对接信息（不含 3.2 密钥） */
+/** 错误码摘要项 */
+export interface PartnerErrorCodeItem {
+  code: string;
+  http: string;
+  meaning: string;
+}
+
+/** 开放接口对接摘要（不含 appSecret） */
 export interface PartnerIntegrationInfo {
   baseUrl: string;
+  apiPrefix: string;
+  docVersion: string;
   apiDocUrl: string;
-  partnerUsername: string;
+  enabled: boolean | null;
+  appId: string;
+  tokenTtlSeconds: number | null;
   authHeader: string;
   tokenPrefix: string;
   loginHint: string;
+  noticeHint: string;
+  errorCodes: PartnerErrorCodeItem[];
   apis: PartnerApiItem[];
 }
 
-/** 查询对外对接信息 */
+/** 查询开放接口对接信息 */
 export const getPartnerIntegration = () => {
   return http.request<Result<PartnerIntegrationInfo>>(
     "post",
     "/api/external-auth-settings-get"
-  );
-};
-
-/** 仅保存对接账号用户名 */
-export const savePartnerUsername = (partnerUsername: string) => {
-  return http.request<Result<PartnerIntegrationInfo>>(
-    "post",
-    "/api/external-auth-settings-save",
-    { data: { partnerUsername } }
   );
 };

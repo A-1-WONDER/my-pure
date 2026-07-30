@@ -440,8 +440,10 @@ const onSearch = async () => {
         return buildRowFromMeterStat(meterStat, archive, collectorById);
       })
     );
-    // 与电表管理 / 采集器管理同源：按所属采集器 status 写 onlineCode
-    rows = stampMetersWithCollectorOnline(rows, collectorOnline ?? new Map());
+    // 与首页采集器在线口径对齐：优先所属采集器 status（不用电表档案陈旧 onlineCode）
+    rows = stampMetersWithCollectorOnline(rows, collectorOnline ?? new Map(), {
+      preferCollector: true
+    });
 
     applyPagination(applyFilters(rows));
     message("查询成功", { type: "success" });
@@ -455,7 +457,8 @@ const onSearch = async () => {
             buildRowFromMeterStat(meterStat)
           )
         ),
-        collectorOnlineMapCache ?? new Map()
+        collectorOnlineMapCache ?? new Map(),
+        { preferCollector: true }
       );
       applyPagination(applyFilters(fallbackRows));
       message("明细已展示（档案信息加载失败）", { type: "warning" });
