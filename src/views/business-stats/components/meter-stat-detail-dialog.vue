@@ -104,9 +104,8 @@ import { Search, Refresh, Download } from "@element-plus/icons-vue";
 import { ElTag } from "element-plus";
 import { message } from "@/utils/message";
 import type { PaginationProps } from "@pureadmin/table";
-import { getElectricMeterDetails } from "@/api/meters";
 import type { MeterStatItem } from "@/api/business-stats";
-import { METER_ENRICH_BATCH_SIZE } from "@/api/business-stats";
+import { getCollectorList } from "@/api/collector";
 import {
   METER_STAT_PERIOD_META,
   getDetailExportHeaders,
@@ -117,8 +116,7 @@ import {
   buildMeterArchiveMap,
   formatCollectorDisplay,
   loadCollectorOptions,
-  loadStatsMeterRows,
-  runInBatches
+  loadStatsMeterRows
 } from "./stats-meter-utils";
 import {
   buildDetailRowFromMeterStat,
@@ -126,6 +124,13 @@ import {
   resolveDetailArchive
 } from "./meter-stat-detail-enrich";
 import { formatMeterEnergyUnit } from "@/views/monitor2/utils/meter-display";
+import {
+  buildCollectorOnlineMap,
+  meterRowMatchesOnlineFilter,
+  resolveMeterListOnlineDisplay,
+  stampMetersWithCollectorOnline,
+  unwrapCollectorListRows
+} from "@/views/monitor2/utils/device-online-status";
 
 defineOptions({
   name: "MeterStatDetailDialog"
@@ -187,46 +192,11 @@ let collectorByIdCache: Map<
   { label: string; installAddress?: string }
 > | null = null;
 let meterArchiveCacheKey = "";
+/** 采集器在线码缓存（与电表管理 / 采集器管理同源） */
+let collectorOnlineMapCache: Map<number, number> | null = null;
 
-const statusMap = {
-  "0": { text: "在线", type: "success" },
-  "1": { text: "未在线", type: "warning" },
-  NORMAL: { text: "在线", type: "success" },
-  ONLINE: { text: "在线", type: "success" },
-  FAULT: { text: "故障", type: "danger" },
-  ERROR: { text: "故障", type: "danger" },
-  OFFLINE: { text: "离线", type: "warning" }
-};
-
-const getStatusDisplay = (statusValue?: string | number | null) => {
-  if (statusValue === null || statusValue === undefined || statusValue === "") {
-    return { text: "未知", type: "info" };
-  }
-  return (
-    statusMap[String(statusValue).toUpperCase()] || {
-      text: String(statusValue),
-      type: "info"
-    }
-  );
-};
-
-const extractLastStatus = (response: Record<string, any>) => {
-  return (
-    response?.data?.laststatus ??
-    response?.data?.lastStatus ??
-    response?.data?.data?.laststatus ??
-    response?.data?.data?.lastStatus ??
-    response?.data?.status ??
-    response?.data?.data?.status ??
-    response?.status ??
-    response?.laststatus ??
-    response?.lastStatus
-  );
-};
-
-const extractResponsePayload = (response: Record<string, any>) => {
-  return response?.data?.data ?? response?.data ?? response;
-};
+const getStatusDisplay = (row: Record<string, unknown>) =>
+  resolveMeterListOnlineDisplay(row);
 
 const sourceMeterStats = computed(() => props.meterStats || []);
 
@@ -262,9 +232,7 @@ const columns = computed(() => [
     prop: "status",
     minWidth: 100,
     cellRenderer: scope => {
-      const status = getStatusDisplay(
-        scope.row.laststatus ?? scope.row.lastStatus ?? scope.row.status
-      );
+      const status = getStatusDisplay(scope.row);
       return h(
         ElTag,
         {
@@ -337,12 +305,14 @@ async function loadMeterArchiveMap() {
     meterArchiveMapCache &&
     meterArchiveByNoCache &&
     collectorByIdCache &&
+    collectorOnlineMapCache &&
     meterArchiveCacheKey === cacheKey
   ) {
     return {
       byId: meterArchiveMapCache,
       byNo: meterArchiveByNoCache,
-      collectorById: collectorByIdCache
+      collectorById: collectorByIdCache,
+      collectorOnline: collectorOnlineMapCache
     };
   }
 
@@ -358,6 +328,7 @@ async function loadMeterArchiveMap() {
     number,
     { label: string; installAddress?: string }
   >();
+  let collectorOnline = new Map<number, number>();
   try {
     const collectorOptions = await loadCollectorOptions();
     collectorById = new Map(
@@ -369,15 +340,28 @@ async function loadMeterArchiveMap() {
   } catch (error) {
     console.warn("加载采集器列表失败，采集器列可能缺少名称:", error);
   }
+  try {
+    const collectorRes = (await getCollectorList({
+      page: 1,
+      size: 1000
+    })) as Record<string, unknown>;
+    collectorOnline = buildCollectorOnlineMap(
+      unwrapCollectorListRows(collectorRes)
+    );
+  } catch (error) {
+    console.warn("加载采集器在线状态失败，明细将用信号/离线兜底:", error);
+  }
 
   meterArchiveMapCache = buildMeterArchiveMap(rows);
   meterArchiveByNoCache = buildMeterArchiveByNoMap(rows);
   collectorByIdCache = collectorById;
+  collectorOnlineMapCache = collectorOnline;
   meterArchiveCacheKey = cacheKey;
   return {
     byId: meterArchiveMapCache,
     byNo: meterArchiveByNoCache,
-    collectorById: collectorByIdCache
+    collectorById: collectorByIdCache,
+    collectorOnline: collectorOnlineMapCache
   };
 }
 
@@ -402,8 +386,8 @@ function applyFilters(rows: Record<string, any>[]) {
   }
 
   if (form.status) {
-    filteredData = filteredData.filter(
-      item => String(item.status ?? "").toUpperCase() === form.status
+    filteredData = filteredData.filter(item =>
+      meterRowMatchesOnlineFilter(item, form.status)
     );
   }
 
@@ -436,46 +420,6 @@ function applyPagination(rows: Record<string, any>[]) {
   pagination.total = rows.length;
 }
 
-async function enrichLastStatus(rows: Record<string, any>[]) {
-  const targets = rows.filter(row => row.id != null);
-  if (!targets.length) return;
-
-  const settled = await runInBatches(
-    targets,
-    METER_ENRICH_BATCH_SIZE,
-    async row => {
-      const response = await getElectricMeterDetails(row.id);
-      const laststatus = extractLastStatus(
-        extractResponsePayload(response as Record<string, any>)
-      );
-      return { id: row.id as number, laststatus };
-    }
-  );
-
-  const statusMap = new Map<number, string | number>();
-  settled.forEach(result => {
-    if (result.status !== "fulfilled") return;
-    const { id, laststatus } = result.value;
-    if (
-      id != null &&
-      laststatus !== null &&
-      laststatus !== undefined &&
-      laststatus !== ""
-    ) {
-      statusMap.set(id, laststatus);
-    }
-  });
-
-  if (!statusMap.size) return;
-
-  rows.forEach(row => {
-    const laststatus = statusMap.get(row.id);
-    if (laststatus === undefined) return;
-    row.laststatus = laststatus;
-    row.status = laststatus;
-  });
-}
-
 // 搜索
 const onSearch = async () => {
   loading.value = true;
@@ -488,30 +432,33 @@ const onSearch = async () => {
       return;
     }
 
-    const { byId, byNo, collectorById } = await loadMeterArchiveMap();
+    const { byId, byNo, collectorById, collectorOnline } =
+      await loadMeterArchiveMap();
     let rows = mergeDetailRowsByMeterId(
       source.map(meterStat => {
         const archive = resolveDetailArchive(meterStat, byId, byNo);
         return buildRowFromMeterStat(meterStat, archive, collectorById);
       })
     );
+    // 与首页采集器在线口径对齐：优先所属采集器 status（不用电表档案陈旧 onlineCode）
+    rows = stampMetersWithCollectorOnline(rows, collectorOnline ?? new Map(), {
+      preferCollector: true
+    });
 
     applyPagination(applyFilters(rows));
     message("查询成功", { type: "success" });
-
-    // 后台补在线状态，不阻塞首屏
-    void enrichLastStatus(rows).then(() => {
-      rows = mergeDetailRowsByMeterId(rows);
-      applyPagination(applyFilters(rows));
-    });
   } catch (error) {
     console.error("查询失败:", error);
     // 兜底：档案异常时仍展示原始统计行，避免整表空白
     try {
-      const fallbackRows = mergeDetailRowsByMeterId(
-        (sourceMeterStats.value || []).map(meterStat =>
-          buildRowFromMeterStat(meterStat)
-        )
+      const fallbackRows = stampMetersWithCollectorOnline(
+        mergeDetailRowsByMeterId(
+          (sourceMeterStats.value || []).map(meterStat =>
+            buildRowFromMeterStat(meterStat)
+          )
+        ),
+        collectorOnlineMapCache ?? new Map(),
+        { preferCollector: true }
       );
       applyPagination(applyFilters(fallbackRows));
       message("明细已展示（档案信息加载失败）", { type: "warning" });
@@ -560,9 +507,7 @@ const exportExcel = () => {
 
     const body = rows.map(item => {
       const collectorText = formatCollectorDisplay(item);
-      const statusText = getStatusDisplay(
-        item.laststatus ?? item.lastStatus ?? item.status
-      ).text;
+      const statusText = getStatusDisplay(item).text;
       const userText = formatMeterEnergyUnit(item);
       const otherParts: string[] = [];
       if (item.voltage) otherParts.push(`${item.voltage}V`);
