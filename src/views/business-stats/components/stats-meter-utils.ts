@@ -10,6 +10,10 @@ import {
   resolveMeterRowDeviceId,
   type StatsDisplayData
 } from "@/api/business-stats";
+import {
+  buildCollectorOnlineMap,
+  unwrapCollectorListRows
+} from "@/views/monitor2/utils/device-online-status";
 
 export type CollectorOption = {
   id: number;
@@ -17,6 +21,22 @@ export type CollectorOption = {
   /** 采集器安装位置（明细「通讯地址」用） */
   installAddress?: string;
 };
+
+/** 跨「查看明细」弹窗复用，避免每次点开都重拉档案 */
+const DETAIL_ARCHIVE_TTL_MS = 5 * 60 * 1000;
+const STATS_METER_TIMEOUT_MS = 60000;
+
+type MeterRowsCache = { at: number; rows: Record<string, any>[] };
+type CollectorArchiveCache = {
+  at: number;
+  options: CollectorOption[];
+  onlineMap: Map<number, number>;
+};
+
+const meterRowsCacheByType = new Map<string, MeterRowsCache>();
+let collectorArchiveCache: CollectorArchiveCache | null = null;
+const meterRowsInflight = new Map<string, Promise<Record<string, any>[]>>();
+let collectorArchiveInflight: Promise<CollectorArchiveCache> | null = null;
 
 /** 将数组按固定大小切块（用于批量日用电等） */
 export function chunkArray<T>(items: T[], size: number): T[][] {
@@ -27,30 +47,7 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-/** 用量统计参与计算的电表档案（≤100 表场景一次拉全） */
-export async function loadStatsMeterRows(meterType?: string) {
-  const response = await getMeterList({
-    page: 1,
-    size: STATS_METER_PAGE_SIZE,
-    meterType: meterType || undefined
-  });
-  return extractMeterRowsFromApiResponse(
-    response as Record<string, any>
-  ).filter(
-    (item: Record<string, any>) => resolveMeterRowDeviceId(item) != null
-  );
-}
-
-/** 采集器下拉选项（多选筛选用；含安装位置供明细通讯地址） */
-export async function loadCollectorOptions(): Promise<CollectorOption[]> {
-  const res = (await getCollectorList({
-    page: 1,
-    size: 200
-  })) as Record<string, any>;
-  const list =
-    res?.content ?? res?.data?.content ?? res?.data?.list ?? res?.list ?? [];
-  if (!Array.isArray(list)) return [];
-
+function mapCollectorOptions(list: Record<string, any>[]): CollectorOption[] {
   return list
     .map((item: Record<string, any>) => {
       const id = Number(item.id);
@@ -71,6 +68,107 @@ export async function loadCollectorOptions(): Promise<CollectorOption[]> {
       };
     })
     .filter((item): item is CollectorOption => item != null);
+}
+
+/** 用量统计参与计算的电表档案（≤100 表场景一次拉全；带短缓存） */
+export async function loadStatsMeterRows(meterType?: string) {
+  const key = meterType || "__all__";
+  const hit = meterRowsCacheByType.get(key);
+  if (hit && Date.now() - hit.at < DETAIL_ARCHIVE_TTL_MS) {
+    return hit.rows;
+  }
+  const inflight = meterRowsInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = getMeterList(
+    {
+      page: 1,
+      size: STATS_METER_PAGE_SIZE,
+      meterType: meterType || undefined
+    },
+    STATS_METER_TIMEOUT_MS
+  )
+    .then(response => {
+      const rows = extractMeterRowsFromApiResponse(
+        response as Record<string, any>
+      ).filter(
+        (item: Record<string, any>) => resolveMeterRowDeviceId(item) != null
+      );
+      meterRowsCacheByType.set(key, { at: Date.now(), rows });
+      return rows;
+    })
+    .finally(() => {
+      meterRowsInflight.delete(key);
+    });
+
+  meterRowsInflight.set(key, promise);
+  return promise;
+}
+
+async function loadCollectorArchive(): Promise<CollectorArchiveCache> {
+  if (
+    collectorArchiveCache &&
+    Date.now() - collectorArchiveCache.at < DETAIL_ARCHIVE_TTL_MS
+  ) {
+    return collectorArchiveCache;
+  }
+  if (collectorArchiveInflight) return collectorArchiveInflight;
+
+  collectorArchiveInflight = getCollectorList(
+    { page: 1, pageSize: 200 },
+    STATS_METER_TIMEOUT_MS
+  )
+    .then(res => {
+      const rows = unwrapCollectorListRows(res as Record<string, unknown>);
+      const payload: CollectorArchiveCache = {
+        at: Date.now(),
+        options: mapCollectorOptions(rows as Record<string, any>[]),
+        onlineMap: buildCollectorOnlineMap(rows)
+      };
+      collectorArchiveCache = payload;
+      return payload;
+    })
+    .finally(() => {
+      collectorArchiveInflight = null;
+    });
+
+  return collectorArchiveInflight;
+}
+
+/** 采集器下拉选项（多选筛选用；含安装位置供明细通讯地址） */
+export async function loadCollectorOptions(): Promise<CollectorOption[]> {
+  const archive = await loadCollectorArchive();
+  return archive.options;
+}
+
+/** 明细弹窗：电表档案 + 采集器名称/在线态（并行 + 跨弹窗缓存） */
+export async function loadDetailArchiveContext(meterType?: string) {
+  const [meterRows, collectors] = await Promise.all([
+    loadStatsMeterRows(meterType || undefined).catch(
+      () => [] as Record<string, any>[]
+    ),
+    loadCollectorArchive().catch(
+      (): CollectorArchiveCache => ({
+        at: 0,
+        options: [],
+        onlineMap: new Map()
+      })
+    )
+  ]);
+
+  const collectorById = new Map(
+    collectors.options.map(item => [
+      item.id,
+      { label: item.label, installAddress: item.installAddress }
+    ])
+  );
+
+  return {
+    byId: buildMeterArchiveMap(meterRows),
+    byNo: buildMeterArchiveByNoMap(meterRows),
+    collectorById,
+    collectorOnline: collectors.onlineMap
+  };
 }
 
 /** 未选采集器 = 全部；已选 = 仅保留 collectorId 落在集合内的电表 */

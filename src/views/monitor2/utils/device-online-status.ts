@@ -5,10 +5,10 @@
  * 3.2 设备 status：0 离线、1 在线、2 待机、3 故障…
  * ElectricMeterDto.onlineStatus 是 Boolean，需转成 0/1
  *
- * 展示优先级（本项目落地方案）：
- *   1. 实时 onlineCode / boxStatus / deviceStatus / onlineStatus
- *   2. 所属采集器 collectorOnline（库表 status）
- * 禁止：signalStrength（库默认常为 25）、meters.status（启用位）、lastStatus、用「有无电量」代替在线。
+ * 展示优先级（本项目落地：一采集器一电表）：
+ *   1. 所属采集器 collectorOnline / onlineCode（后端已按 collectors.status 写入）
+ *   2. 其它实时字段仅作兼容，不应与采集器打架
+ * 禁止：signalStrength（库默认常为 25）、meters.status（启用位）、用「有无电量」代替在线。
  */
 
 export type OnlineTagType = "success" | "warning" | "danger" | "info";

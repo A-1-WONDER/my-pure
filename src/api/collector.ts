@@ -23,7 +23,7 @@ type SpringDataPage<T> = {
  * GET /api/collector
  * 权限：collector:list
  */
-export const getCollectorList = (params?: object) => {
+export const getCollectorList = (params?: object, timeoutMs = 10000) => {
   console.log("【collector.ts】getCollectorList被调用");
   console.log("【collector.ts】原始参数params:", params);
 
@@ -43,7 +43,8 @@ export const getCollectorList = (params?: object) => {
   console.log("【collector.ts】请求方法: GET");
 
   const result = http.request<SpringDataPage<any>>("get", "/api/collectors", {
-    params: transformedParams
+    params: transformedParams,
+    timeout: timeoutMs
   });
 
   // 添加then/catch来捕获Promise的结果

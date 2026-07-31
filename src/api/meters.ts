@@ -208,9 +208,10 @@ export interface SupportedReadingTypes {
  * GET /api/meters
  * 权限：meter:list
  */
-export const getMeterList = (params?: MeterListParams) => {
+export const getMeterList = (params?: MeterListParams, timeoutMs = 10000) => {
   return http.request<ResultTable>("get", "/api/meters", {
-    params
+    params,
+    timeout: timeoutMs
   });
 };
 
