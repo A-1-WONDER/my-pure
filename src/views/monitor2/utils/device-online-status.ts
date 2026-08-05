@@ -201,17 +201,16 @@ export function buildCollectorOnlineMap(
 
 export type StampMetersOnlineOptions = {
   /**
-   * true：与首页采集器在线口径对齐，优先所属采集器 status。
-   * 用于用量统计电表明细，避免档案里陈旧 onlineCode=0 盖过采集器在线。
-   * false/默认：电表管理等场景，仍优先电表实时态。
+   * 默认 true：与采集器页对齐，优先所属采集器 status。
+   * false：旧兼容，优先电表实时 onlineStatus/onlineCode。
    */
   preferCollector?: boolean;
 };
 
 /**
  * 给电表行写入 onlineCode / collectorOnline。
- * 默认优先级：电表实时 onlineStatus/boxStatus/onlineCode → 所属采集器 status → 离线。
- * preferCollector 时：所属采集器 status → 电表实时 → 离线。
+ * preferCollector（默认建议 true）：所属采集器 status → 电表实时 → 离线。
+ * false：电表实时 → 所属采集器 status → 离线（旧兼容）。
  * 不用信号强度；有用量不等于在线。
  */
 export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
@@ -219,7 +218,7 @@ export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
   collectorOnline: Map<number, number>,
   options?: StampMetersOnlineOptions
 ): T[] {
-  const preferCollector = options?.preferCollector === true;
+  const preferCollector = options?.preferCollector !== false;
   return meters.map(meter => {
     const collectorId = Number(meter?.collectorId);
     const fromCollector = Number.isFinite(collectorId)

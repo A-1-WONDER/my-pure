@@ -10,7 +10,6 @@ import {
   getMeterList,
   deleteMeters,
   batchUpdateMeterStatus,
-  getElectricMeterDetails,
   simpleMeterApi,
   updateMeter,
   updateMeterReading
@@ -20,7 +19,6 @@ import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
 import {
   buildCollectorOnlineMap,
-  extractCurrentOnlineStatus,
   meterRowMatchesOnlineFilter,
   resolveMeterListOnlineDisplay,
   stampMetersWithCollectorOnline,
@@ -47,44 +45,16 @@ export function useElectricMeter(tableRef: Ref) {
   };
 
   /**
-   * 电表在线态 = 所属采集器 status（同源），可选再被详情实时覆盖。
-   * 写入 onlineCode，避免和库表启用 status 混淆。
+   * 电表在线态只跟所属采集器 collectors.status（一采集器一电表）。
+   * 不再打详情接口二次覆盖，避免新增表/限流时与采集器页对不齐。
    */
   const loadOnlineStatusForMeters = async (meters: any[]) => {
     if (!meters.length) return meters;
 
     const collectorOnline = await loadCollectorOnlineMap();
-    const withCollector = stampMetersWithCollectorOnline(
-      meters,
-      collectorOnline
-    );
-
-    // 后台用详情微调（不阻塞首屏）；失败则保持采集器态
-    void Promise.allSettled(
-      withCollector.map(async meter => {
-        const meterId = Number(meter?.id ?? meter?.meterId);
-        if (!Number.isFinite(meterId)) return;
-        try {
-          const response = await getElectricMeterDetails(meterId);
-          const onlineStatus = extractCurrentOnlineStatus(
-            response as Record<string, unknown>
-          );
-          if (onlineStatus === undefined) return;
-          dataList.value = dataList.value.map(row => {
-            if (Number(row.id ?? row.meterId) !== meterId) return row;
-            return {
-              ...row,
-              onlineCode: onlineStatus,
-              commsStatus: onlineStatus
-            };
-          });
-        } catch {
-          // ignore
-        }
-      })
-    );
-
-    return withCollector;
+    return stampMetersWithCollectorOnline(meters, collectorOnline, {
+      preferCollector: true
+    });
   };
 
   const form = reactive({
