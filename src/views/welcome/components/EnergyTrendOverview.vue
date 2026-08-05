@@ -77,7 +77,8 @@ const dimensionOptions: Array<OptionsType> = [
   { label: "年", value: "year" }
 ];
 
-const dimensionIndex = ref(0);
+/** 默认「日」：走 meter_daily_energy，秒开；小时会 fan-out 精采接口，仅手动切换时加载 */
+const dimensionIndex = ref(1);
 const dimension = computed<StatsDimension>(
   () =>
     (dimensionOptions[dimensionIndex.value]?.value as StatsDimension) ?? "hour"

@@ -325,10 +325,6 @@ async function onSave() {
   }
 }
 
-function onRechargeMail() {
-  message("请联系运维或管理员为报警邮箱账户充值", { type: "info" });
-}
-
 onMounted(() => {
   ensureMaps();
   loadSetting();
@@ -357,17 +353,7 @@ onMounted(() => {
       <h3 class="alarm-card__title">邮件通知</h3>
       <ul class="alarm-card__tips">
         <li>该页面设置的报警触发邮件仅发送给管理员，每次触发发送一次。</li>
-        <li>
-          请确保邮件余额充足，发送失败不扣费。
-          <el-button
-            class="alarm-card__link-btn"
-            link
-            type="primary"
-            @click="onRechargeMail"
-          >
-            充值邮件
-          </el-button>
-        </li>
+        <li>请确保邮件余额充足，发送失败不扣费。</li>
         <li>最多支持设置 2 个邮箱接收报警通知信息。</li>
       </ul>
       <div class="alarm-card__emails">
@@ -576,11 +562,6 @@ onMounted(() => {
   li + li {
     margin-top: 4px;
   }
-}
-
-.alarm-card__link-btn {
-  margin-left: 4px;
-  vertical-align: baseline;
 }
 
 .alarm-card__emails {

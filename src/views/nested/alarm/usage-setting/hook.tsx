@@ -10,7 +10,10 @@ import {
 } from "@/api/alarm";
 import { getCollectorList } from "@/api/collector";
 import { getMeterList } from "@/api/meters";
-import { extractTargetIds } from "../rule-config/rule-detail-utils";
+import {
+  extractTargetIds,
+  alarmRuleRowToSavePayload
+} from "../rule-config/rule-detail-utils";
 import type { PaginationProps } from "@pureadmin/table";
 import { ElMessageBox } from "element-plus";
 
@@ -90,8 +93,14 @@ export function useAlarmUsageSetting() {
     rangeOp: "lt" as "lt" | "gt",
     thresholdKwh: undefined as number | undefined,
     silenceDays: 1,
-    applyAll: true
+    /** "1"=全部设备，"0"=指定电表 */
+    applyAll: "1" as "1" | "0",
+    targetIds: [] as number[],
+    /** 指定设备时可选：按采集器缩小候选表 */
+    filterCollectorId: "" as "" | number | string
   });
+
+  const togglingEnabledId = ref<number | null>(null);
 
   const pagination = reactive<PaginationProps>({
     total: 0,
@@ -126,6 +135,33 @@ export function useAlarmUsageSetting() {
       );
     }
     return map;
+  });
+
+  /** 添加页：可选电表（可按采集器过滤） */
+  const meterSelectOptions = computed(() => {
+    const cid = addForm.filterCollectorId;
+    const cidNum =
+      cid !== "" && cid != null && Number.isFinite(Number(cid))
+        ? Number(cid)
+        : null;
+    return meters.value
+      .filter(m => {
+        if (cidNum == null) return true;
+        return Number(m.collectorId) === cidNum;
+      })
+      .map(m => {
+        const id = Number(m.id);
+        const no = String(m.meterNo ?? m.meterAddress ?? id);
+        const user = String(m.userName ?? m.username ?? "").trim();
+        const cName =
+          collectorNoById.value[Number(m.collectorId)] ||
+          (m.collectorId != null ? `采集器${m.collectorId}` : "");
+        const parts = [no];
+        if (user) parts.push(user);
+        if (cName) parts.push(cName);
+        return { id, label: parts.join(" / ") };
+      })
+      .filter(o => Number.isFinite(o.id));
   });
 
   /** meterId → 绑定的用量规则名 */
@@ -193,7 +229,7 @@ export function useAlarmUsageSetting() {
     {
       label: "操作",
       fixed: "right",
-      width: 100,
+      width: 160,
       slot: "usageSettingOps"
     }
   ];
@@ -459,7 +495,9 @@ export function useAlarmUsageSetting() {
     addForm.rangeOp = "lt";
     addForm.thresholdKwh = undefined;
     addForm.silenceDays = 1;
-    addForm.applyAll = true;
+    addForm.applyAll = "1";
+    addForm.targetIds = [];
+    addForm.filterCollectorId = "";
   }
 
   async function submitAdd() {
@@ -481,23 +519,23 @@ export function useAlarmUsageSetting() {
       return;
     }
 
-    if (!addForm.applyAll) {
-      message("指定设备绑定暂未开放，请选择「应用到所有设备」为是", {
-        type: "warning"
-      });
-      return;
+    const applyAll = String(addForm.applyAll) !== "0";
+    let targetIds: number[] = [];
+    if (!applyAll) {
+      targetIds = (addForm.targetIds || [])
+        .map(v => Number(v))
+        .filter(n => Number.isFinite(n));
+      if (targetIds.length === 0) {
+        message("请至少选择一块电能表", { type: "warning" });
+        return;
+      }
     }
 
-    if (meters.value.length === 0) {
-      message("当前没有可应用的电能表", { type: "warning" });
-      return;
-    }
-
-    // 空 targetIds = 全部电能表（与后端日用量规则评估一致）
+    // 空 targetIds = 全部电能表；非空 = 指定设备
     const payload: AlarmRulePayload = {
       ruleName: name,
       targetType: "electric_meter",
-      targetIds: [],
+      targetIds,
       alarmType:
         addForm.rangeOp === "lt"
           ? "continuous_low_usage"
@@ -515,9 +553,17 @@ export function useAlarmUsageSetting() {
     saving.value = true;
     try {
       const res = (await saveAlarmRule(payload)) as Record<string, any>;
-      const ok = res?.code === 0 || res?.success === true;
+      const ok =
+        Number(res?.code) === 0 ||
+        res?.success === true ||
+        Number(res?.data?.code) === 0;
       if (ok) {
-        message("添加成功", { type: "success" });
+        message(
+          applyAll
+            ? "添加成功（已应用到全部电能表）"
+            : `添加成功（已绑定 ${targetIds.length} 块表）`,
+          { type: "success" }
+        );
         resetAddForm();
         activeView.value = "monitor";
         await loadAll();
@@ -526,10 +572,64 @@ export function useAlarmUsageSetting() {
           type: "warning"
         });
       }
-    } catch {
-      message("添加失败", { type: "error" });
+    } catch (error: any) {
+      const detail =
+        error?.response?.data?.msg ??
+        error?.response?.data?.message ??
+        error?.message;
+      message(detail ? `添加失败：${detail}` : "添加失败", { type: "error" });
     } finally {
       saving.value = false;
+    }
+  }
+
+  async function toggleUsageSettingEnabled(row: {
+    id?: number | string;
+    enabled?: boolean;
+    ruleName?: string;
+  }) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id) || togglingEnabledId.value === id) return;
+    const rule = usageRules.value.find(r => Number(r.id) === id);
+    if (!rule) {
+      message("未找到该用量设置", { type: "warning" });
+      return;
+    }
+    const currentlyEnabled = row.enabled !== false;
+    const nextEnabled = !currentlyEnabled;
+    const actionLabel = nextEnabled ? "启用" : "禁用";
+    try {
+      await ElMessageBox.confirm(
+        `确认${actionLabel}用量参数「${row.ruleName ?? id}」？`,
+        `${actionLabel}确认`,
+        { type: "warning" }
+      );
+    } catch {
+      return;
+    }
+    togglingEnabledId.value = id;
+    try {
+      const payload = alarmRuleRowToSavePayload(rule, { enabled: nextEnabled });
+      const res = (await saveAlarmRule(payload)) as Record<string, any>;
+      const ok = Number(res?.code) === 0 || res?.success === true;
+      if (ok) {
+        message(`已${actionLabel}`, { type: "success" });
+        await loadUsageRules();
+      } else {
+        message(String(res?.msg ?? res?.message ?? `${actionLabel}失败`), {
+          type: "warning"
+        });
+      }
+    } catch (error: any) {
+      const detail =
+        error?.response?.data?.msg ??
+        error?.response?.data?.message ??
+        error?.message;
+      message(detail ? `${actionLabel}失败：${detail}` : `${actionLabel}失败`, {
+        type: "error"
+      });
+    } finally {
+      togglingEnabledId.value = null;
     }
   }
 
@@ -569,10 +669,12 @@ export function useAlarmUsageSetting() {
     activeView,
     loading,
     saving,
+    togglingEnabledId,
     filter,
     addForm,
     collectorOptions,
     ruleOptions,
+    meterSelectOptions,
     columns,
     dataList,
     pagination,
@@ -587,6 +689,7 @@ export function useAlarmUsageSetting() {
     submitAdd,
     resetAddForm,
     removeUsageSetting,
+    toggleUsageSettingEnabled,
     loadAll
   };
 }

@@ -86,7 +86,7 @@ describe("device-online-status", () => {
     expect(resolveMeterListOnlineDisplay(rows[2]).text).toBe("离线");
   });
 
-  it("prefers meter realtime onlineStatus over offline collector", () => {
+  it("by default follows collector status over meter realtime", () => {
     const map = buildCollectorOnlineMap([{ id: 10, status: 0 }]);
     const rows = stampMetersWithCollectorOnline(
       [
@@ -95,6 +95,22 @@ describe("device-online-status", () => {
         { id: 3, collectorId: 10 }
       ],
       map
+    );
+    expect(resolveMeterListOnlineDisplay(rows[0]).text).toBe("离线");
+    expect(resolveMeterListOnlineDisplay(rows[1]).text).toBe("离线");
+    expect(resolveMeterListOnlineDisplay(rows[2]).text).toBe("离线");
+  });
+
+  it("preferCollector=false keeps meter realtime over collector", () => {
+    const map = buildCollectorOnlineMap([{ id: 10, status: 0 }]);
+    const rows = stampMetersWithCollectorOnline(
+      [
+        { id: 1, collectorId: 10, onlineStatus: true },
+        { id: 2, collectorId: 10, onlineStatus: false },
+        { id: 3, collectorId: 10 }
+      ],
+      map,
+      { preferCollector: false }
     );
     expect(resolveMeterListOnlineDisplay(rows[0]).text).toBe("在线");
     expect(resolveMeterListOnlineDisplay(rows[1]).text).toBe("离线");
@@ -117,6 +133,7 @@ describe("device-online-status", () => {
     );
     expect(resolveMeterListOnlineDisplay(rows[0]).text).toBe("在线");
     expect(resolveMeterListOnlineDisplay(rows[1]).text).toBe("离线");
+    // 无所属采集器时回退电表实时 onlineCode
     expect(resolveMeterListOnlineDisplay(rows[2]).text).toBe("在线");
   });
 

@@ -80,15 +80,18 @@
     <pure-table
       ref="tableRef"
       row-key="id"
+      size="small"
       align-whole="center"
       table-layout="auto"
+      class="detail-dialog__table"
       :loading="loading"
       :data="dataList"
       :columns="columns"
       :pagination="pagination"
       :header-cell-style="{
         background: 'var(--el-fill-color-light)',
-        color: 'var(--el-text-color-primary)'
+        color: 'var(--el-text-color-primary)',
+        padding: '6px 0'
       }"
       @page-size-change="handleSizeChange"
       @page-current-change="handleCurrentChange"
@@ -105,18 +108,14 @@ import { ElTag } from "element-plus";
 import { message } from "@/utils/message";
 import type { PaginationProps } from "@pureadmin/table";
 import type { MeterStatItem } from "@/api/business-stats";
-import { getCollectorList } from "@/api/collector";
 import {
   METER_STAT_PERIOD_META,
   getDetailExportHeaders,
   type MeterStatDetailPeriod
 } from "./meter-stat-period";
 import {
-  buildMeterArchiveByNoMap,
-  buildMeterArchiveMap,
   formatCollectorDisplay,
-  loadCollectorOptions,
-  loadStatsMeterRows
+  loadDetailArchiveContext
 } from "./stats-meter-utils";
 import {
   buildDetailRowFromMeterStat,
@@ -125,11 +124,9 @@ import {
 } from "./meter-stat-detail-enrich";
 import { formatMeterEnergyUnit } from "@/views/monitor2/utils/meter-display";
 import {
-  buildCollectorOnlineMap,
   meterRowMatchesOnlineFilter,
   resolveMeterListOnlineDisplay,
-  stampMetersWithCollectorOnline,
-  unwrapCollectorListRows
+  stampMetersWithCollectorOnline
 } from "@/views/monitor2/utils/device-online-status";
 
 defineOptions({
@@ -184,15 +181,8 @@ const exporting = ref(false);
 const dataList = ref([]);
 /** 当前筛选后的全量数据（导出用，不受分页截断） */
 const filteredAllList = ref<Record<string, any>[]>([]);
-/** 会话内复用电表档案，避免筛选/翻页重复拉列表 */
-let meterArchiveMapCache: Map<number, Record<string, any>> | null = null;
-let meterArchiveByNoCache: Map<string, Record<string, any>> | null = null;
-let collectorByIdCache: Map<
-  number,
-  { label: string; installAddress?: string }
-> | null = null;
-let meterArchiveCacheKey = "";
-/** 采集器在线码缓存（与电表管理 / 采集器管理同源） */
+/** 最近一次筛选结果（翻页只切页，不再重拉档案） */
+let lastFilteredRows: Record<string, any>[] = [];
 let collectorOnlineMapCache: Map<number, number> | null = null;
 
 const getStatusDisplay = (row: Record<string, unknown>) =>
@@ -300,69 +290,9 @@ const columns = computed(() => [
 ]);
 
 async function loadMeterArchiveMap() {
-  const cacheKey = props.meterType || "__all__";
-  if (
-    meterArchiveMapCache &&
-    meterArchiveByNoCache &&
-    collectorByIdCache &&
-    collectorOnlineMapCache &&
-    meterArchiveCacheKey === cacheKey
-  ) {
-    return {
-      byId: meterArchiveMapCache,
-      byNo: meterArchiveByNoCache,
-      collectorById: collectorByIdCache,
-      collectorOnline: collectorOnlineMapCache
-    };
-  }
-
-  // 档案/采集器失败不应导致明细整表空白
-  let rows: Record<string, any>[] = [];
-  try {
-    rows = await loadStatsMeterRows(props.meterType || undefined);
-  } catch (error) {
-    console.warn("加载电表档案失败，明细将仅展示统计原始字段:", error);
-  }
-
-  let collectorById = new Map<
-    number,
-    { label: string; installAddress?: string }
-  >();
-  let collectorOnline = new Map<number, number>();
-  try {
-    const collectorOptions = await loadCollectorOptions();
-    collectorById = new Map(
-      collectorOptions.map(item => [
-        item.id,
-        { label: item.label, installAddress: item.installAddress }
-      ])
-    );
-  } catch (error) {
-    console.warn("加载采集器列表失败，采集器列可能缺少名称:", error);
-  }
-  try {
-    const collectorRes = (await getCollectorList({
-      page: 1,
-      size: 1000
-    })) as Record<string, unknown>;
-    collectorOnline = buildCollectorOnlineMap(
-      unwrapCollectorListRows(collectorRes)
-    );
-  } catch (error) {
-    console.warn("加载采集器在线状态失败，明细将用信号/离线兜底:", error);
-  }
-
-  meterArchiveMapCache = buildMeterArchiveMap(rows);
-  meterArchiveByNoCache = buildMeterArchiveByNoMap(rows);
-  collectorByIdCache = collectorById;
-  collectorOnlineMapCache = collectorOnline;
-  meterArchiveCacheKey = cacheKey;
-  return {
-    byId: meterArchiveMapCache,
-    byNo: meterArchiveByNoCache,
-    collectorById: collectorByIdCache,
-    collectorOnline: collectorOnlineMapCache
-  };
+  const ctx = await loadDetailArchiveContext(props.meterType || undefined);
+  collectorOnlineMapCache = ctx.collectorOnline;
+  return ctx;
 }
 
 function buildRowFromMeterStat(
@@ -413,6 +343,7 @@ function applyFilters(rows: Record<string, any>[]) {
 }
 
 function applyPagination(rows: Record<string, any>[]) {
+  lastFilteredRows = rows;
   const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
   const endIndex = startIndex + pagination.pageSize;
   filteredAllList.value = rows;
@@ -432,6 +363,15 @@ const onSearch = async () => {
       return;
     }
 
+    // 先秒开原始统计行，再并行补档案（跨弹窗有 5 分钟缓存）
+    applyPagination(
+      applyFilters(
+        mergeDetailRowsByMeterId(
+          source.map(meterStat => buildRowFromMeterStat(meterStat))
+        )
+      )
+    );
+
     const { byId, byNo, collectorById, collectorOnline } =
       await loadMeterArchiveMap();
     let rows = mergeDetailRowsByMeterId(
@@ -446,7 +386,6 @@ const onSearch = async () => {
     });
 
     applyPagination(applyFilters(rows));
-    message("查询成功", { type: "success" });
   } catch (error) {
     console.error("查询失败:", error);
     // 兜底：档案异常时仍展示原始统计行，避免整表空白
@@ -550,16 +489,16 @@ const exportExcel = () => {
   }
 };
 
-// 分页处理
+// 分页处理（只切页，不重拉接口）
 const handleSizeChange = (val: number) => {
   pagination.pageSize = val;
   pagination.currentPage = 1;
-  onSearch();
+  applyPagination(lastFilteredRows);
 };
 
 const handleCurrentChange = (val: number) => {
   pagination.currentPage = val;
-  onSearch();
+  applyPagination(lastFilteredRows);
 };
 
 onMounted(() => {
@@ -570,11 +509,29 @@ onMounted(() => {
 <style lang="scss" scoped>
 .detail-dialog {
   .search-form {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 
     :deep(.el-form-item) {
       margin-right: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
+    }
+  }
+
+  .detail-dialog__table {
+    :deep(.el-table .el-table__cell) {
+      padding: 4px 0;
+    }
+
+    :deep(.el-table .cell) {
+      padding-right: 6px;
+      padding-left: 6px;
+      line-height: 1.25;
+    }
+
+    :deep(.el-tag) {
+      height: 20px;
+      padding: 0 6px;
+      line-height: 18px;
     }
   }
 }

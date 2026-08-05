@@ -96,9 +96,9 @@ const handleInputConfirm = () => {
 
     <div class="mb-2">基础按钮</div>
     <el-radio-group v-model="baseTag" class="mb-3">
-      <el-radio label="dark" value="dark" />
-      <el-radio label="light" value="light" />
-      <el-radio label="plain" value="plain" />
+      <el-radio value="dark" />
+      <el-radio value="light" />
+      <el-radio value="plain" />
     </el-radio-group>
     <br />
     <el-space class="mb-3">

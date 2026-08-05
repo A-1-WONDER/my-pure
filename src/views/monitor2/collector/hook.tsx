@@ -14,6 +14,7 @@ import {
 } from "@/api/collector";
 import type { CollectorInfo } from "@/api/types";
 import { utils, writeFile } from "xlsx";
+import { getOnlineStatusDisplay } from "../utils/device-online-status";
 
 export function useCollector(tableRef: Ref) {
   const form = reactive({
@@ -77,20 +78,7 @@ export function useCollector(tableRef: Ref) {
       prop: "status",
       minWidth: 100,
       cellRenderer: ({ row, props }) => {
-        // 状态映射：与电表管理保持一致
-        const statusMap = {
-          NORMAL: { text: "在线", type: "success" },
-          FAULT: { text: "故障", type: "danger" },
-          OFFLINE: { text: "离线", type: "warning" },
-          // 兼容数字状态值
-          1: { text: "正常", type: "success" },
-          0: { text: "异常", type: "danger" }
-        };
-
-        // 获取状态值，优先使用字符串状态
-        const statusValue = row.status;
-        const status = statusMap[statusValue] || { text: "未知", type: "info" };
-
+        const status = getOnlineStatusDisplay(row.status);
         return (
           <el-tag size={props.size} type={status.type} effect="plain">
             {status.text}

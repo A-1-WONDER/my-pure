@@ -16,18 +16,16 @@ import { getCollectorList } from "@/api/collector";
 import { getEladminUserPage } from "@/api/system";
 import type { AlarmEvent } from "@/api/types";
 import { getAlarmEventQueryList } from "@/api/alarm";
-import { getMeterList } from "@/api/meters";
+import { getMeterList, getMeterStatistics } from "@/api/meters";
 import {
   getEnergyStatisticsSummary,
+  getSiteEnergyKpi,
   transformStatsData,
   unwrapEnergyStatisticsSummaryResponse,
   extractMeterRowsFromApiResponse,
-  extractDayPowerValueFromResponse,
-  resolveMeterRowDeviceId,
-  getDeviceDayPower,
-  getDeviceHourPower,
   generateTimeParams,
   type EnergyStatsQueryParams,
+  type SiteEnergyKpi,
   type StatsDimension,
   type StatsDisplayData,
   type MeterStatItem
@@ -112,18 +110,6 @@ const buildSingleMonthSummaryParams = (
   ignoreRadio: 0
 });
 
-/** 顶部 KPI 用：本月 + 上月，共 2 个月 */
-const buildMonthKpiSummaryParams = () => {
-  const endTime = dayjs().format("YYYYMM");
-  const startTime = dayjs().subtract(1, "month").format("YYYYMM");
-  return {
-    dimension: "month" as StatsDimension,
-    startTime,
-    endTime,
-    ignoreRadio: 0 as const
-  };
-};
-
 /** 月汇总缓存行（图表 3 月；同比单月另查后合并） */
 const monthSummaryAllRows = ref<StatsDisplayData[]>([]);
 
@@ -167,7 +153,8 @@ const powerToday = ref(0);
 const powerYesterday = ref(0);
 const powerThisMonth = ref(0);
 const powerLastMonth = ref(0);
-const POWER_SUMMARY_CACHE_KEY = "welcome:power-summary:v1";
+/** 与首页同源 KPI 缓存键，避免大屏/首页数字各写一套旧 summary */
+const POWER_SUMMARY_CACHE_KEY = "welcome:power-summary:v7";
 const POWER_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const energyDimension = ref<StatsDimension>("day");
@@ -183,6 +170,9 @@ const energyRankList = ref<CollectorRankRow[]>([]);
 const rankLoading = ref(false);
 
 let cachedMeters: Record<string, unknown>[] | null = null;
+/** 避免首屏多处同时打 /api/meters */
+let metersLoadPromise: Promise<Record<string, unknown>[]> | null = null;
+let collectorLoadPromise: Promise<void> | null = null;
 
 const alarmLoading = ref(false);
 const alarmList = ref<AlarmEvent[]>([]);
@@ -261,32 +251,15 @@ const alarmTypeStats = computed(() => {
   }).filter(item => item.value > 0);
 });
 
-const resolveCollectorNoById = (id: number) => {
-  const row = collectorRows.value.find(
-    item => Number(item.id ?? item.collectorId) === id
-  );
-  if (!row) return "";
-  return String(row.collectorNo ?? row.code ?? row.collectorCode ?? "");
-};
-
+/** 大屏只展示数字 ID，不展示名称/编号 */
 const alarmDeviceLabel = (item: AlarmEvent) => {
-  if (item.meterNo) return String(item.meterNo);
-  if (item.collectorId != null && item.collectorId !== "") {
-    const cid = Number(item.collectorId);
-    if (Number.isFinite(cid)) {
-      const no = resolveCollectorNoById(cid);
-      if (no) return no;
-    }
-    return String(item.collectorId);
+  const meterId = Number(item.meterId ?? item.deviceId);
+  if (Number.isFinite(meterId) && meterId > 0) return String(meterId);
+  const collectorId = Number(item.collectorId);
+  if (Number.isFinite(collectorId) && collectorId > 0) {
+    return String(collectorId);
   }
-  const deviceId = Number(item.deviceId ?? item.meterId);
-  if (Number.isFinite(deviceId)) {
-    const meter = cachedMeters?.find(m => Number(m.id) === deviceId);
-    if (meter?.meterNo) return String(meter.meterNo);
-    const no = resolveCollectorNoById(deviceId);
-    if (no) return no;
-  }
-  return item.deviceCode || item.deviceName || "—";
+  return "—";
 };
 
 const alarmTypeText = (item: AlarmEvent) =>
@@ -391,7 +364,7 @@ const buildCollectorEvents = (rows: Record<string, unknown>[]) => {
       if (!eventTime) return null;
       const isOnline = normalizeCollectorOnline(item.status);
       return {
-        collectorNo: String(item.collectorNo || item.code || item.id || "—"),
+        collectorNo: String(item.id ?? item.collectorId ?? "—"),
         event: isOnline ? ("上线" as const) : ("下线" as const),
         eventTime,
         minutesAgo: formatMinutesAgo(eventTime)
@@ -465,26 +438,66 @@ const buildEnergyStatsParams = (): EnergyStatsQueryParams => {
   }
 };
 
+/** 大屏拉主数据：站点电表约几十块；放宽超时，避免与同步任务抢库时 10s 误杀 */
+const DATA_SCREEN_METER_PAGE_SIZE = 200;
+const DATA_SCREEN_METER_TIMEOUT_MS = 60000;
+
+const applyMeterTypeCounts = (typeStats: unknown) => {
+  if (!Array.isArray(typeStats)) return false;
+  let water = 0;
+  let electric = 0;
+  for (const row of typeStats) {
+    if (!row || typeof row !== "object") continue;
+    const type =
+      (row as Record<string, unknown>).meter_type ??
+      (row as Record<string, unknown>).meterType ??
+      (row as Record<string, unknown>).type;
+    const count = Number((row as Record<string, unknown>).count ?? 0);
+    if (!Number.isFinite(count)) continue;
+    if (isWaterMeterType(type)) water += count;
+    else if (isElectricMeterType(type)) electric += count;
+  }
+  waterMeterCount.value = water;
+  electricMeterCount.value = electric;
+  return water + electric > 0 || typeStats.length > 0;
+};
+
 const loadBasicInfo = async () => {
   basicInfoLoading.value = true;
   try {
-    const [meterResult, userResult] = await Promise.allSettled([
-      getMeterList({ page: 1, size: 10000 }),
+    const [meterStatResult, userResult] = await Promise.allSettled([
+      getMeterStatistics(),
       getEladminUserPage({ page: 1, size: 1 })
     ]);
 
-    if (meterResult.status === "fulfilled") {
-      const meters = extractMeterRowsFromApiResponse(
-        (meterResult.value || {}) as Record<string, unknown>
-      );
-      waterMeterCount.value = meters.filter(m =>
-        isWaterMeterType(m.meterType)
-      ).length;
-      electricMeterCount.value = meters.filter(m =>
-        isElectricMeterType(m.meterType)
-      ).length;
+    if (meterStatResult.status === "fulfilled") {
+      const payload = (meterStatResult.value || {}) as Record<string, unknown>;
+      const typeStats =
+        payload.typeStatistics ??
+        (payload.data as Record<string, unknown> | undefined)?.typeStatistics;
+      if (!applyMeterTypeCounts(typeStats)) {
+        // 统计接口异常时再退回列表计数（不阻塞首屏能耗）
+        const meters = await loadMetersCache();
+        waterMeterCount.value = meters.filter(m =>
+          isWaterMeterType(m.meterType)
+        ).length;
+        electricMeterCount.value = meters.filter(m =>
+          isElectricMeterType(m.meterType)
+        ).length;
+      }
     } else {
-      console.error("加载表具统计失败:", meterResult.reason);
+      console.error("加载表具统计失败:", meterStatResult.reason);
+      try {
+        const meters = await loadMetersCache();
+        waterMeterCount.value = meters.filter(m =>
+          isWaterMeterType(m.meterType)
+        ).length;
+        electricMeterCount.value = meters.filter(m =>
+          isElectricMeterType(m.meterType)
+        ).length;
+      } catch {
+        /* ignore */
+      }
     }
 
     if (userResult.status === "fulfilled") {
@@ -506,56 +519,69 @@ const loadBasicInfo = async () => {
 };
 
 const loadCollectorStats = async () => {
+  if (collectorLoadPromise) return collectorLoadPromise;
   collectorLoading.value = true;
-  try {
-    const response = await getCollectorList({ page: 1, pageSize: 10000 });
-    const rows = Array.isArray(response?.content) ? response.content : [];
-    collectorRows.value = rows;
-    collectorCount.value =
-      Number(response?.totalElements) || rows.length || collectorCount.value;
-    const online = rows.filter(item =>
-      normalizeCollectorOnline(item?.status)
-    ).length;
-    collectorOnlineCount.value = online;
-    collectorOfflineCount.value = Math.max(rows.length - online, 0);
-    if (collectorCount.value < rows.length) {
-      collectorCount.value = rows.length;
+  collectorLoadPromise = (async () => {
+    try {
+      const response = await getCollectorList(
+        { page: 1, pageSize: DATA_SCREEN_METER_PAGE_SIZE },
+        DATA_SCREEN_METER_TIMEOUT_MS
+      );
+      const rows = Array.isArray(response?.content) ? response.content : [];
+      collectorRows.value = rows;
+      collectorCount.value =
+        Number(response?.totalElements) || rows.length || collectorCount.value;
+      const online = rows.filter(item =>
+        normalizeCollectorOnline(item?.status)
+      ).length;
+      collectorOnlineCount.value = online;
+      collectorOfflineCount.value = Math.max(rows.length - online, 0);
+      if (collectorCount.value < rows.length) {
+        collectorCount.value = rows.length;
+      }
+      buildCollectorEvents(rows);
+      updateCollectorPieChart();
+    } catch (error) {
+      console.error("加载采集器统计失败:", error);
+      collectorCount.value = 0;
+      collectorOnlineCount.value = 0;
+      collectorOfflineCount.value = 0;
+      collectorRows.value = [];
+      collectorEventList.value = [];
+      updateCollectorPieChart();
+    } finally {
+      collectorLoading.value = false;
+      collectorLoadPromise = null;
     }
-    buildCollectorEvents(rows);
-    updateCollectorPieChart();
-  } catch (error) {
-    console.error("加载采集器统计失败:", error);
-    collectorCount.value = 0;
-    collectorOnlineCount.value = 0;
-    collectorOfflineCount.value = 0;
-    collectorRows.value = [];
-    collectorEventList.value = [];
-    updateCollectorPieChart();
-  } finally {
-    collectorLoading.value = false;
-  }
+  })();
+  return collectorLoadPromise;
 };
 
 const loadMetersCache = async () => {
   if (cachedMeters) return cachedMeters;
-  const meterRes = await getMeterList({ page: 1, size: 10000 });
-  cachedMeters = extractMeterRowsFromApiResponse(
-    (meterRes || {}) as Record<string, unknown>
-  );
-  return cachedMeters;
+  if (!metersLoadPromise) {
+    metersLoadPromise = getMeterList(
+      { page: 1, size: DATA_SCREEN_METER_PAGE_SIZE },
+      DATA_SCREEN_METER_TIMEOUT_MS
+    )
+      .then(meterRes => {
+        cachedMeters = extractMeterRowsFromApiResponse(
+          (meterRes || {}) as Record<string, unknown>
+        );
+        return cachedMeters;
+      })
+      .catch(err => {
+        metersLoadPromise = null;
+        throw err;
+      });
+  }
+  return metersLoadPromise;
 };
 
 const buildCollectorRank = (
   meterStats: MeterStatItem[],
   options?: { limit?: number; includeAllCollectors?: boolean }
 ) => {
-  const collectorNoById = new Map<number, string>();
-  collectorRows.value.forEach(item => {
-    const id = Number(item.id);
-    if (!Number.isFinite(id)) return;
-    collectorNoById.set(id, String(item.collectorNo || item.code || id));
-  });
-
   const meters = cachedMeters || [];
   const meterById = new Map<number, Record<string, unknown>>();
   const meterByNo = new Map<string, Record<string, unknown>>();
@@ -565,27 +591,28 @@ const buildCollectorRank = (
     if (m.meterNo) meterByNo.set(String(m.meterNo), m);
   });
 
+  // 大屏排名只展示采集器 ID（如 302）
   const sumByCollector = new Map<string, number>();
   meterStats.forEach(m => {
     const meter =
       meterById.get(Number(m.meterId)) ||
       meterByNo.get(String(m.meterNo || ""));
     const cid = Number(meter?.collectorId);
-    const collectorNo =
-      (Number.isFinite(cid) ? collectorNoById.get(cid) : undefined) ||
-      String(m.meterNo || "未知");
+    if (!Number.isFinite(cid)) return;
+    const key = String(cid);
     sumByCollector.set(
-      String(collectorNo),
-      (sumByCollector.get(String(collectorNo)) || 0) +
-        Number(m.totalConsumption || 0)
+      key,
+      (sumByCollector.get(key) || 0) + Number(m.totalConsumption || 0)
     );
   });
 
   if (options?.includeAllCollectors) {
     collectorRows.value.forEach(item => {
-      const no = String(item.collectorNo || item.code || item.id || "");
-      if (no && !sumByCollector.has(no)) {
-        sumByCollector.set(no, 0);
+      const id = Number(item.id ?? item.collectorId);
+      if (!Number.isFinite(id)) return;
+      const key = String(id);
+      if (!sumByCollector.has(key)) {
+        sumByCollector.set(key, 0);
       }
     });
   }
@@ -616,8 +643,12 @@ const getRankBadgeStyle = (rank: number, total: number) => {
   };
 };
 
-/** 获取指定自然日的电表明细（汇总接口无明细时回退逐表 day-power） */
+/** 仅用汇总接口分表明细做排名，禁止逐表 day-power（会打爆首屏） */
 const fetchDayMeterStats = async (dayKey: string): Promise<MeterStatItem[]> => {
+  const fromChart = energyStatsList.value.find(r => r.timeKey === dayKey);
+  if (fromChart?.meterStats?.length) {
+    return fromChart.meterStats;
+  }
   const dayRows = await fetchEnergySeries({
     dimension: "day",
     startTime: dayKey,
@@ -625,109 +656,13 @@ const fetchDayMeterStats = async (dayKey: string): Promise<MeterStatItem[]> => {
     ignoreRadio: 0
   });
   const row = dayRows.find(r => r.timeKey === dayKey);
-  if (row?.meterStats?.length) {
-    return row.meterStats;
-  }
-
-  const meters = (await loadMetersCache()).filter(m =>
-    isElectricMeterType(m.meterType)
-  );
-  if (!meters.length) return [];
-
-  const dateStr = dayjs(dayKey, "YYYYMMDD").format("YYYY-MM-DD");
-  const settled = await Promise.allSettled(
-    meters.map((item: Record<string, unknown>) => {
-      const deviceId = resolveMeterRowDeviceId(item as Record<string, unknown>);
-      if (!deviceId) return Promise.resolve(null);
-      return getDeviceDayPower(deviceId, dateStr).then(res => ({
-        meterId: deviceId,
-        meterNo: String(item.meterNo ?? deviceId),
-        meterName: String(item.meterNo ?? ""),
-        totalConsumption: extractDayPowerValueFromResponse(
-          res as Record<string, unknown>
-        ),
-        startTime: `${dateStr} 00:00:00`,
-        endTime: `${dateStr} 23:59:59`
-      }));
-    })
-  );
-
-  return settled
-    .filter(
-      (r): r is PromiseFulfilledResult<MeterStatItem | null> =>
-        r.status === "fulfilled" && r.value != null
-    )
-    .map(r => r.value as MeterStatItem)
-    .filter(m => Number.isFinite(Number(m.totalConsumption)));
+  return row?.meterStats?.length ? row.meterStats : [];
 };
 
-const extractHourPowerFromResponse = (
-  response: Record<string, unknown>,
-  hour: number
-) => {
-  const layers: unknown[] = [
-    (response as Record<string, unknown>)?.data,
-    response
-  ];
-  for (const layer of layers) {
-    if (!layer || typeof layer !== "object") continue;
-    const hours = (layer as Record<string, unknown>).hours;
-    if (!Array.isArray(hours)) continue;
-    const item = hours.find((h: Record<string, unknown>) => {
-      if (h.hour != null && Number(h.hour) === hour) return true;
-      const key = String(h.hourKey ?? "");
-      if (key.length >= 2) {
-        return Number(key.slice(-2)) === hour;
-      }
-      return false;
-    }) as Record<string, unknown> | undefined;
-    if (item) {
-      const v = Number(item.hourPower ?? item.power ?? 0);
-      if (Number.isFinite(v)) return v;
-    }
-  }
-  return 0;
-};
-
-/** 获取指定小时各电表明细 */
+/** 仅用汇总接口分表明细；无明细则空排名，不再逐表 hour-power */
 const fetchHourMeterStats = async (target: dayjs.Dayjs) => {
-  const hourKey = target.format("YYYYMMDDHH");
   const row = await fetchHourBucket(target, energyStatsList.value);
-  if (row?.meterStats?.length) {
-    return row.meterStats;
-  }
-
-  const meters = (await loadMetersCache()).filter(m =>
-    isElectricMeterType(m.meterType)
-  );
-  if (!meters.length) return [];
-
-  const dateStr = target.format("YYYY-MM-DD");
-  const hourNum = target.hour();
-  const settled = await Promise.allSettled(
-    meters.map((item: Record<string, unknown>) => {
-      const deviceId = resolveMeterRowDeviceId(item);
-      if (!deviceId) return Promise.resolve(null);
-      return getDeviceHourPower(deviceId, dateStr).then(res => ({
-        meterId: deviceId,
-        meterNo: String(item.meterNo ?? deviceId),
-        meterName: String(item.meterNo ?? ""),
-        totalConsumption: extractHourPowerFromResponse(
-          res as Record<string, unknown>,
-          hourNum
-        ),
-        startTime: target.format("YYYY-MM-DD HH:00:00"),
-        endTime: target.add(1, "hour").format("YYYY-MM-DD HH:00:00")
-      }));
-    })
-  );
-
-  return settled
-    .filter(
-      (r): r is PromiseFulfilledResult<MeterStatItem | null> =>
-        r.status === "fulfilled" && r.value != null
-    )
-    .map(r => r.value as MeterStatItem);
+  return row?.meterStats?.length ? row.meterStats : [];
 };
 
 /** 从已缓存的月汇总中取某月电表明细（不再调用逐设备 month-power） */
@@ -791,10 +726,14 @@ const fetchHourBucket = async (
 const loadEnergySidePanel = async () => {
   rankLoading.value = true;
   try {
-    await loadMetersCache();
+    // 排名映射需要电表→采集器；与能耗汇总并行，不挡 KPI 数字
+    const metersReady = loadMetersCache().catch(
+      () => [] as Record<string, unknown>[]
+    );
     if (collectorRows.value.length === 0) {
       await loadCollectorStats();
     }
+    await metersReady;
     const dim = energyDimension.value;
     const now = dayjs();
     const todayKey = now.format("YYYYMMDD");
@@ -977,6 +916,20 @@ const readPowerSummaryCache = (
   }
 };
 
+const unwrapSiteEnergyKpi = (res: unknown): SiteEnergyKpi => {
+  if (!res || typeof res !== "object") return {};
+  const root = res as Record<string, unknown>;
+  const data = root.data;
+  if (data && typeof data === "object") {
+    const d = data as SiteEnergyKpi;
+    if (d.powerToday != null || d.powerThisMonth != null || d.source != null) {
+      return d;
+    }
+  }
+  return root as SiteEnergyKpi;
+};
+
+/** 顶部 KPI 与首页一致：GET /kpi 读 meter_daily_energy，不再打 day/month summary */
 const loadPowerSummary = async () => {
   powerLoading.value = true;
   try {
@@ -999,24 +952,11 @@ const loadPowerSummary = async () => {
       return;
     }
 
-    const [dayRows, monthRowsAll] = await Promise.all([
-      fetchEnergySeries({
-        dimension: "day",
-        startTime: yesterday,
-        endTime: today,
-        ignoreRadio: 0
-      }),
-      fetchEnergySeries(buildMonthKpiSummaryParams())
-    ]);
-    monthSummaryAllRows.value = monthRowsAll;
-
-    const byKey = (rows: StatsDisplayData[], key: string) =>
-      Number(rows.find(r => r.timeKey === key)?.totalConsumption || 0);
-
-    powerToday.value = byKey(dayRows, today);
-    powerYesterday.value = byKey(dayRows, yesterday);
-    powerThisMonth.value = byKey(monthRowsAll, thisMonth);
-    powerLastMonth.value = byKey(monthRowsAll, lastMonth);
+    const kpi = unwrapSiteEnergyKpi(await getSiteEnergyKpi());
+    powerToday.value = Number(kpi.powerToday) || 0;
+    powerYesterday.value = Number(kpi.powerYesterday) || 0;
+    powerThisMonth.value = Number(kpi.powerThisMonth) || 0;
+    powerLastMonth.value = Number(kpi.powerLastMonth) || 0;
 
     localStorage.setItem(
       POWER_SUMMARY_CACHE_KEY,
@@ -1066,7 +1006,6 @@ const loadEnergyStatsChart = async () => {
 const loadAlarmTimeline = async () => {
   alarmLoading.value = true;
   try {
-    await loadMetersCache();
     const { code, data } = await getAlarmEventQueryList({
       alarmType: "",
       alarmLevel: "",
@@ -1302,8 +1241,9 @@ onMounted(async () => {
   await initCharts();
   window.addEventListener("resize", handleResize);
 
-  await loadCollectorStats();
+  // 全部并行：不再先等采集器再拉能耗（原串行会拖慢整屏）
   await Promise.all([
+    loadCollectorStats(),
     loadBasicInfo(),
     loadPowerSummary(),
     loadEnergyStatsChart(),
@@ -1507,7 +1447,7 @@ onBeforeUnmount(() => {
               <table class="data-panel__table">
                 <thead>
                   <tr>
-                    <th>采集器</th>
+                    <th>采集器ID</th>
                     <th>事件</th>
                     <th>发生时间</th>
                   </tr>
@@ -1798,7 +1738,7 @@ onBeforeUnmount(() => {
               <table class="data-panel__table">
                 <thead>
                   <tr>
-                    <th>设备</th>
+                    <th>设备ID</th>
                     <th>报警类型</th>
                     <th>报警详情</th>
                     <th>时间</th>

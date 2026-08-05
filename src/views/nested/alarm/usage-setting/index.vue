@@ -19,10 +19,12 @@ const {
   activeView,
   loading,
   saving,
+  togglingEnabledId,
   filter,
   addForm,
   collectorOptions,
   ruleOptions,
+  meterSelectOptions,
   columns,
   dataList,
   pagination,
@@ -37,6 +39,7 @@ const {
   submitAdd,
   resetAddForm,
   removeUsageSetting,
+  toggleUsageSettingEnabled,
   loadAll
 } = useAlarmUsageSetting();
 </script>
@@ -173,6 +176,15 @@ const {
           <template #usageSettingOps="{ row }">
             <el-button
               link
+              :type="row.enabled ? 'warning' : 'success'"
+              size="small"
+              :loading="togglingEnabledId === Number(row.id)"
+              @click="toggleUsageSettingEnabled(row)"
+            >
+              {{ row.enabled ? "禁用" : "启用" }}
+            </el-button>
+            <el-button
+              link
               type="danger"
               size="small"
               @click="removeUsageSetting(row)"
@@ -287,10 +299,51 @@ const {
           </el-form-item>
           <el-form-item label="应用到所有设备">
             <el-radio-group v-model="addForm.applyAll">
-              <el-radio :label="true">是</el-radio>
-              <el-radio :label="false" disabled>否（暂未开放）</el-radio>
+              <el-radio value="1">是</el-radio>
+              <el-radio value="0">否（指定电能表）</el-radio>
             </el-radio-group>
           </el-form-item>
+          <template v-if="addForm.applyAll === '0'">
+            <el-form-item label="筛选采集器">
+              <el-select
+                v-model="addForm.filterCollectorId"
+                clearable
+                filterable
+                placeholder="全部采集器"
+                class="usage-add__control"
+              >
+                <el-option
+                  v-for="opt in collectorOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="选择电能表" required>
+              <el-select
+                v-model="addForm.targetIds"
+                multiple
+                filterable
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="可多选电能表"
+                class="usage-add__control usage-add__control--wide"
+              >
+                <el-option
+                  v-for="opt in meterSelectOptions"
+                  :key="opt.id"
+                  :label="opt.label"
+                  :value="opt.id"
+                />
+              </el-select>
+              <div class="usage-add__hint">
+                已选
+                {{ addForm.targetIds.length }}
+                块表；可先按采集器缩小范围再搜索表号。
+              </div>
+            </el-form-item>
+          </template>
           <el-form-item class="usage-add__actions">
             <el-button type="primary" :loading="saving" @click="submitAdd">
               添加
@@ -438,6 +491,10 @@ const {
 
 .usage-add__control--sm {
   max-width: min(280px, 100%);
+}
+
+.usage-add__control--wide {
+  max-width: min(640px, 100%);
 }
 
 .usage-add__range,

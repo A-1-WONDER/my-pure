@@ -86,13 +86,13 @@ watch(size, val =>
 
     <div class="mb-2">基础按钮</div>
     <el-radio-group v-model="baseRadio" class="mb-3">
-      <el-radio label="default" value="default" />
-      <el-radio label="plain" value="plain" />
-      <el-radio label="round" value="round" />
-      <el-radio label="circle" value="circle" />
-      <el-radio label="link" value="link" />
-      <el-radio label="text" value="text" />
-      <el-radio label="text-bg" value="text-bg" />
+      <el-radio value="default" />
+      <el-radio value="plain" />
+      <el-radio value="round" />
+      <el-radio value="circle" />
+      <el-radio value="link" />
+      <el-radio value="text" />
+      <el-radio value="text-bg" />
     </el-radio-group>
     <br />
     <el-space wrap>

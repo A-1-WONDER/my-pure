@@ -116,7 +116,7 @@ defineOptions({
   name: "BusinessStatsDailyElectric"
 });
 
-const allowDemoFallback = !import.meta.env.PROD;
+const allowDemoFallback = false;
 
 const formRef = ref();
 const tableRef = ref();

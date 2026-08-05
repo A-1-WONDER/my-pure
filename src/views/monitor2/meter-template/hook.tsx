@@ -12,8 +12,16 @@ import {
   updateMeter,
   deleteMeters
 } from "@/api/meters";
+import { getCollectorList } from "@/api/collector";
 import { getMeterTypeConfig } from "@/config/meter-types";
 import { utils, writeFile } from "xlsx";
+import {
+  buildCollectorOnlineMap,
+  meterRowMatchesOnlineFilter,
+  resolveMeterListOnlineDisplay,
+  stampMetersWithCollectorOnline,
+  unwrapCollectorListRows
+} from "../utils/device-online-status";
 
 // 表类型配置
 const meterTypeConfig = {
@@ -167,6 +175,34 @@ function mergeMeterConfig(type: string) {
 export function useMeterTemplate(tableRef: Ref, meterType: string) {
   const config = mergeMeterConfig(meterType);
   const allowDemoFallback = !import.meta.env.PROD;
+  const isElectricMeter = meterType === "electric";
+
+  /** 拉取全量采集器 status，按 id 建表（与采集器管理页同源） */
+  const loadCollectorOnlineMap = async () => {
+    try {
+      const result = (await getCollectorList({
+        page: 1,
+        size: 1000
+      })) as Record<string, unknown>;
+      return buildCollectorOnlineMap(unwrapCollectorListRows(result));
+    } catch (e) {
+      console.warn("加载采集器在线状态失败，电表将用本地兜底:", e);
+      return new Map<number, number>();
+    }
+  };
+
+  /**
+   * 电表在线态只跟所属采集器 collectors.status（一采集器一电表）。
+   * 不再打详情接口二次覆盖。
+   */
+  const loadOnlineStatusForMeters = async (meters: any[]) => {
+    if (!meters.length || !isElectricMeter) return meters;
+
+    const collectorOnline = await loadCollectorOnlineMap();
+    return stampMetersWithCollectorOnline(meters, collectorOnline, {
+      preferCollector: true
+    });
+  };
 
   const form = reactive({
     meterNo: "",
@@ -227,18 +263,10 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       },
       {
         label: "在线状态",
-        prop: "status",
+        prop: "onlineCode",
         minWidth: 100,
         cellRenderer: scope => {
-          const statusMap = {
-            NORMAL: { text: "在线", type: "success" },
-            FAULT: { text: "故障", type: "danger" },
-            OFFLINE: { text: "离线", type: "warning" }
-          };
-          const status = statusMap[scope.row.status] || {
-            text: "未知",
-            type: "info"
-          };
+          const status = resolveMeterListOnlineDisplay(scope.row);
           return (
             <el-tag size={scope.props.size} type={status.type} effect="plain">
               {status.text}
@@ -348,14 +376,8 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       // 排除勾选列和操作列
       columns.forEach(column => {
         if (column.type !== "selection" && column.slot !== "operation") {
-          if (column.prop === "status") {
-            // 处理在线状态
-            const statusMap = {
-              NORMAL: "在线",
-              FAULT: "故障",
-              OFFLINE: "离线"
-            };
-            arr.push(statusMap[item[column.prop]] || "未知");
+          if (column.prop === "onlineCode" || column.prop === "status") {
+            arr.push(resolveMeterListOnlineDisplay(item).text);
           } else if (column.prop === "collectorId") {
             // 处理采集器
             arr.push(
@@ -480,7 +502,7 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       };
       if (form.meterNo) baseParams.meterNo = form.meterNo;
       if (form.blurry) baseParams.blurry = form.blurry;
-      if (form.status) baseParams.status = form.status;
+      // 在线状态为前端采集器口径，勿传后端 Integer status（会 400）
       if (form.collectorId) baseParams.collectorId = form.collectorId;
       if (form.userId) baseParams.userId = form.userId;
       if (form.enabled !== undefined && form.enabled !== null) {
@@ -596,14 +618,15 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
     loading.value = true;
 
     try {
+      // 在线筛选走采集器口径，需拉全量再前端过滤；勿把 NORMAL/OFFLINE 传给后端 Integer status
+      const onlineFilter = form.status;
       const requestParams: Record<string, unknown> = {
-        page: pagination.currentPage,
-        size: pagination.pageSize
+        page: onlineFilter ? 1 : pagination.currentPage,
+        size: onlineFilter ? 10000 : pagination.pageSize
       };
       if (form.meterNo) requestParams.meterNo = form.meterNo;
       if (form.blurry) requestParams.blurry = form.blurry;
       if (form.meterType) requestParams.meterType = form.meterType;
-      if (form.status) requestParams.status = form.status;
       if (form.collectorId) requestParams.collectorId = form.collectorId;
       if (form.userId) requestParams.userId = form.userId;
       if (form.enabled !== undefined && form.enabled !== null) {
@@ -629,26 +652,22 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
       }
 
       // 处理响应数据
+      let rows: any[] = [];
       if (response) {
         // 判断响应格式
         if (response.success !== undefined) {
           // 格式1: {success: true, data: {...}}
           if (response.success && response.data) {
-            dataList.value = response.data.content || [];
-            pagination.total = response.data.totalElements || 0;
-
-            // 设置pageSize：优先使用响应中的size，否则使用当前pageSize
-            pagination.pageSize = response.data?.size ?? pagination.pageSize;
-
-            // 设置currentPage：优先使用响应中的number，否则使用请求参数中的page，否则保持当前值
-            if (response.data?.number !== undefined) {
-              // 后端返回的number从0开始，前端从1开始
-              pagination.currentPage = response.data.number + 1;
-            } else if (requestParams.page !== undefined) {
-              // 使用请求参数中的page（从1开始）
-              pagination.currentPage = Number(requestParams.page) || 1;
+            rows = response.data.content || [];
+            if (!onlineFilter) {
+              pagination.total = response.data.totalElements || 0;
+              pagination.pageSize = response.data?.size ?? pagination.pageSize;
+              if (response.data?.number !== undefined) {
+                pagination.currentPage = response.data.number + 1;
+              } else if (requestParams.page !== undefined) {
+                pagination.currentPage = Number(requestParams.page) || 1;
+              }
             }
-            // 否则保持当前的currentPage值
           } else {
             // 业务逻辑失败
             const errorMsg = response?.message || "查询失败";
@@ -656,29 +675,41 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
             dataList.value = [];
             pagination.total = 0;
             pagination.currentPage = 1;
+            return;
           }
         } else if (response.content !== undefined) {
           // 格式2: 直接返回Spring Data格式 {content: [], totalElements: 0, ...}
-          dataList.value = response.content || [];
-          pagination.total = response.totalElements || 0;
-
-          // 设置pageSize：优先使用响应中的size，否则使用当前pageSize
-          pagination.pageSize = response?.size ?? pagination.pageSize;
-
-          // 设置currentPage：优先使用响应中的number，否则使用请求参数中的page，否则保持当前值
-          if (response?.number !== undefined) {
-            // 后端返回的number从0开始，前端从1开始
-            pagination.currentPage = response.number + 1;
-          } else if (requestParams.page !== undefined) {
-            // 使用请求参数中的page（从1开始）
-            pagination.currentPage = Number(requestParams.page) || 1;
+          rows = response.content || [];
+          if (!onlineFilter) {
+            pagination.total = response.totalElements || 0;
+            pagination.pageSize = response?.size ?? pagination.pageSize;
+            if (response?.number !== undefined) {
+              pagination.currentPage = response.number + 1;
+            } else if (requestParams.page !== undefined) {
+              pagination.currentPage = Number(requestParams.page) || 1;
+            }
           }
-          // 否则保持当前的currentPage值
         } else {
           // 未知格式
           console.warn("未知的响应格式:", response);
           dataList.value = [];
           pagination.total = 0;
+          return;
+        }
+
+        if (rows.length > 0 && isElectricMeter) {
+          rows = await loadOnlineStatusForMeters(rows);
+        }
+
+        if (onlineFilter) {
+          rows = rows.filter(row =>
+            meterRowMatchesOnlineFilter(row, onlineFilter)
+          );
+          pagination.total = rows.length;
+          const start = (pagination.currentPage - 1) * pagination.pageSize;
+          dataList.value = rows.slice(start, start + pagination.pageSize);
+        } else {
+          dataList.value = rows;
         }
 
         // 如果数据为空，显示提示
@@ -716,12 +747,6 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           );
         }
 
-        if (form.status) {
-          filteredData = filteredData.filter(
-            item => item.status === form.status
-          );
-        }
-
         if (form.meterType) {
           filteredData = filteredData.filter(
             item => item.meterType === form.meterType
@@ -740,12 +765,22 @@ export function useMeterTemplate(tableRef: Ref, meterType: string) {
           );
         }
 
-        dataList.value = filteredData;
+        filteredData = isElectricMeter
+          ? await loadOnlineStatusForMeters(filteredData)
+          : filteredData;
+
+        if (form.status) {
+          filteredData = filteredData.filter(item =>
+            meterRowMatchesOnlineFilter(item, form.status)
+          );
+        }
+
         pagination.total = filteredData.length;
         pagination.pageSize = 10;
         pagination.currentPage = 1;
         form.page = 0;
         form.size = 10;
+        dataList.value = filteredData.slice(0, pagination.pageSize);
 
         message(`数据库表结构不完整，使用演示数据`, { type: "warning" });
       } else {

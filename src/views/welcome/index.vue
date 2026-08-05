@@ -11,11 +11,7 @@ import { getCollectorList } from "@/api/collector";
 import type { AlarmEvent } from "@/api/types";
 import { getAlarmEventQueryList, getAlarmMailNotifyTrend } from "@/api/alarm";
 import { getAlarmTypeLabel } from "@/views/nested/alarm/constants";
-import {
-  type EnergyStatsQueryParams,
-  type StatsDisplayData
-} from "@/api/business-stats";
-import { loadEnergySummaryDisplay } from "@/utils/energy-summary-cache";
+import { getSiteEnergyKpi, type SiteEnergyKpi } from "@/api/business-stats";
 
 defineOptions({
   name: "Welcome"
@@ -114,19 +110,8 @@ const powerThisMonth = ref(0);
 const powerLastMonth = ref(0);
 const powerThisYear = ref(0);
 const powerLastYear = ref(0);
-const POWER_SUMMARY_CACHE_KEY = "welcome:power-summary:v6";
+const POWER_SUMMARY_CACHE_KEY = "welcome:power-summary:v7";
 const POWER_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
-/** 与电用量年统计页一致：按「单年」调 summary，避免跨年一次查询超时 */
-const YEAR_SUMMARY_TIMEOUT_MS = 120000;
-const YEAR_SUMMARY_TIMEOUT_COLD_MS = 300000;
-
-/** 与数据大屏 KPI 一致：仅查上月～本月（GET .../energy-statistics/summary + Redis） */
-const buildMonthKpiSummaryParams = (): EnergyStatsQueryParams => ({
-  dimension: "month",
-  startTime: dayjs().subtract(1, "month").format("YYYYMM"),
-  endTime: dayjs().format("YYYYMM"),
-  ignoreRadio: 0
-});
 
 const alarmLoading = ref(false);
 const alarmList = ref<AlarmEvent[]>([]);
@@ -274,20 +259,28 @@ const loadSystemRegionInfo = async () => {
   }
 };
 
-async function fetchEnergySeries(
-  params: EnergyStatsQueryParams,
-  timeoutMs?: number
-): Promise<StatsDisplayData[]> {
-  try {
-    const { rows } = await loadEnergySummaryDisplay(params, { timeoutMs });
-    return rows;
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn("[welcome] 用电量汇总失败:", params, error);
+const unwrapSiteEnergyKpi = (res: unknown): SiteEnergyKpi => {
+  if (!res || typeof res !== "object") return {};
+  const root = res as Record<string, unknown>;
+  const data = root.data;
+  if (data && typeof data === "object") {
+    const d = data as SiteEnergyKpi;
+    if (d.powerToday != null || d.powerThisMonth != null || d.source != null) {
+      return d;
     }
-    return [];
   }
-}
+  return root as SiteEnergyKpi;
+};
+
+const applySiteEnergyKpi = (kpi: SiteEnergyKpi) => {
+  powerToday.value = Number(kpi.powerToday) || 0;
+  powerYesterday.value = Number(kpi.powerYesterday) || 0;
+  powerThisMonth.value = Number(kpi.powerThisMonth) || 0;
+  powerLastMonth.value = Number(kpi.powerLastMonth) || 0;
+  powerThisYear.value = Number(kpi.powerThisYear) || 0;
+  powerLastYear.value = Number(kpi.powerLastYear) || 0;
+  powerSummaryHasSnapshot.value = true;
+};
 
 const formatPowerNumber = (n: number) => {
   const v = Number.isFinite(n) ? n : 0;
@@ -295,12 +288,6 @@ const formatPowerNumber = (n: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(v);
-};
-
-const pickConsumptionByKey = (rows: StatsDisplayData[], key: string) => {
-  const target = String(key).trim();
-  const row = rows.find(r => String(r.timeKey).trim() === target);
-  return Number(row?.totalConsumption || 0);
 };
 
 type PowerSummaryCachePayload = {
@@ -378,14 +365,6 @@ const hydratePowerSummaryFromStorage = (): boolean => {
 const isPowerSummaryCacheFresh = (parsed: PowerSummaryCachePayload) =>
   Date.now() - Number(parsed.at || 0) <= POWER_SUMMARY_CACHE_TTL_MS;
 
-const powerSummaryNeedsYearRefresh = (parsed: PowerSummaryCachePayload) => {
-  const monthHasData =
-    Number(parsed.powerThisMonth) > 0 || Number(parsed.powerLastMonth) > 0;
-  const yearAllZero =
-    Number(parsed.powerThisYear) === 0 && Number(parsed.powerLastYear) === 0;
-  return monthHasData && yearAllZero;
-};
-
 hydratePowerSummaryFromStorage();
 
 const writePowerSummaryCache = (payload: PowerSummaryCachePayload) => {
@@ -414,38 +393,7 @@ const buildPowerSummaryCachePayload = (
   powerLastYear: powerLastYear.value
 });
 
-/** 年维度汇总较慢，后台加载，不阻塞日/月 KPI */
-const loadYearPowerSummary = async (keys: PowerSummaryKeySet) => {
-  powerYearLoading.value = true;
-  try {
-    const thisYearRows = await fetchEnergySeries(
-      {
-        dimension: "year",
-        startTime: keys.thisYear,
-        endTime: keys.thisYear,
-        ignoreRadio: 0
-      },
-      YEAR_SUMMARY_TIMEOUT_COLD_MS
-    );
-    powerThisYear.value = pickConsumptionByKey(thisYearRows, keys.thisYear);
-
-    const lastYearRows = await fetchEnergySeries(
-      {
-        dimension: "year",
-        startTime: keys.lastYear,
-        endTime: keys.lastYear,
-        ignoreRadio: 0
-      },
-      YEAR_SUMMARY_TIMEOUT_COLD_MS
-    );
-    powerLastYear.value = pickConsumptionByKey(lastYearRows, keys.lastYear);
-
-    writePowerSummaryCache(buildPowerSummaryCachePayload(keys));
-  } finally {
-    powerYearLoading.value = false;
-  }
-};
-
+/** 首页六项用电 KPI：一次读 fact 表，避免 month/year summary 扇出 3.2 超时 */
 const loadPowerSummary = async () => {
   const keys = computePowerSummaryKeys();
   const cached = loadPowerSummaryCacheRaw();
@@ -456,9 +404,6 @@ const loadPowerSummary = async () => {
 
   if (cacheUsable) {
     applyPowerSummaryCache(cached);
-    if (powerSummaryNeedsYearRefresh(cached)) {
-      void loadYearPowerSummary(keys);
-    }
     return;
   }
 
@@ -466,26 +411,12 @@ const loadPowerSummary = async () => {
   if (showBlockingLoad) {
     powerLoading.value = true;
   }
+  powerYearLoading.value = true;
 
   try {
-    const [dayRows, monthRows] = await Promise.all([
-      fetchEnergySeries({
-        dimension: "day",
-        startTime: keys.yesterday,
-        endTime: keys.today,
-        ignoreRadio: 0
-      }),
-      fetchEnergySeries(buildMonthKpiSummaryParams())
-    ]);
-
-    powerToday.value = pickConsumptionByKey(dayRows, keys.today);
-    powerYesterday.value = pickConsumptionByKey(dayRows, keys.yesterday);
-    powerThisMonth.value = pickConsumptionByKey(monthRows, keys.thisMonth);
-    powerLastMonth.value = pickConsumptionByKey(monthRows, keys.lastMonth);
-    powerSummaryHasSnapshot.value = true;
-
+    const res = await getSiteEnergyKpi();
+    applySiteEnergyKpi(unwrapSiteEnergyKpi(res));
     writePowerSummaryCache(buildPowerSummaryCachePayload(keys));
-    void loadYearPowerSummary(keys);
   } catch (e) {
     if (import.meta.env.DEV) {
       console.error("加载近期用电量汇总失败:", e);
@@ -500,6 +431,7 @@ const loadPowerSummary = async () => {
     }
   } finally {
     powerLoading.value = false;
+    powerYearLoading.value = false;
   }
 };
 
@@ -600,8 +532,9 @@ const setupOnlineChartResizeObserver = () => {
   syncOnlineChartHeight();
 };
 
-onMounted(async () => {
-  await loadCollectorStats();
+onMounted(() => {
+  // 并行：勿先 await 采集器，否则 KPI/报警被挡住数秒
+  loadCollectorStats();
   loadSystemRegionInfo();
   loadPowerSummary();
   loadAlarmTimeline();
@@ -610,9 +543,10 @@ onMounted(async () => {
   loginTimeTimer = setInterval(() => {
     loginTimeTick.value++;
   }, 1000);
-  await nextTick();
-  setupOnlineChartResizeObserver();
-  setupAlarmLayoutObserver();
+  void nextTick().then(() => {
+    setupOnlineChartResizeObserver();
+    setupAlarmLayoutObserver();
+  });
 });
 
 watch([collectorLoading, mailTrendLoading], async () => {

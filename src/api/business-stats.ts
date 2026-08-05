@@ -328,6 +328,28 @@ export const getEnergyStatisticsSummaryErrorMessage = (
 /** 汇总接口常涉及大范围聚合，后端可能较慢，单独放宽超时（默认 axios 为 10s） */
 const ENERGY_SUMMARY_TIMEOUT_MS = 120000;
 
+export interface SiteEnergyKpi {
+  powerToday?: number;
+  powerYesterday?: number;
+  powerThisMonth?: number;
+  powerLastMonth?: number;
+  powerThisYear?: number;
+  powerLastYear?: number;
+  source?: string;
+}
+
+/**
+ * 全站用电 KPI（读 meter_daily_energy，毫秒级，供首页/大屏）
+ * GET /api/external/energy-statistics/kpi
+ */
+export const getSiteEnergyKpi = (timeoutMs = 15000) => {
+  return http.request<Result<SiteEnergyKpi> | SiteEnergyKpi>(
+    "get",
+    "/api/external/energy-statistics/kpi",
+    { timeout: timeoutMs }
+  );
+};
+
 export const getEnergyStatisticsSummary = (
   params: EnergyStatsQueryParams,
   timeoutMs = ENERGY_SUMMARY_TIMEOUT_MS

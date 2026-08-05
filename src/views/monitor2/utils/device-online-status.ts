@@ -5,10 +5,10 @@
  * 3.2 设备 status：0 离线、1 在线、2 待机、3 故障…
  * ElectricMeterDto.onlineStatus 是 Boolean，需转成 0/1
  *
- * 展示优先级（本项目落地方案）：
- *   1. 实时 onlineCode / boxStatus / deviceStatus / onlineStatus
- *   2. 所属采集器 collectorOnline（库表 status）
- * 禁止：signalStrength（库默认常为 25）、meters.status（启用位）、lastStatus、用「有无电量」代替在线。
+ * 展示优先级（本项目落地：一采集器一电表）：
+ *   1. 所属采集器 collectorOnline / onlineCode（后端已按 collectors.status 写入）
+ *   2. 其它实时字段仅作兼容，不应与采集器打架
+ * 禁止：signalStrength（库默认常为 25）、meters.status（启用位）、用「有无电量」代替在线。
  */
 
 export type OnlineTagType = "success" | "warning" | "danger" | "info";
@@ -201,17 +201,16 @@ export function buildCollectorOnlineMap(
 
 export type StampMetersOnlineOptions = {
   /**
-   * true：与首页采集器在线口径对齐，优先所属采集器 status。
-   * 用于用量统计电表明细，避免档案里陈旧 onlineCode=0 盖过采集器在线。
-   * false/默认：电表管理等场景，仍优先电表实时态。
+   * 默认 true：与采集器页对齐，优先所属采集器 status。
+   * false：旧兼容，优先电表实时 onlineStatus/onlineCode。
    */
   preferCollector?: boolean;
 };
 
 /**
  * 给电表行写入 onlineCode / collectorOnline。
- * 默认优先级：电表实时 onlineStatus/boxStatus/onlineCode → 所属采集器 status → 离线。
- * preferCollector 时：所属采集器 status → 电表实时 → 离线。
+ * preferCollector（默认建议 true）：所属采集器 status → 电表实时 → 离线。
+ * false：电表实时 → 所属采集器 status → 离线（旧兼容）。
  * 不用信号强度；有用量不等于在线。
  */
 export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
@@ -219,7 +218,7 @@ export function stampMetersWithCollectorOnline<T extends Record<string, any>>(
   collectorOnline: Map<number, number>,
   options?: StampMetersOnlineOptions
 ): T[] {
-  const preferCollector = options?.preferCollector === true;
+  const preferCollector = options?.preferCollector !== false;
   return meters.map(meter => {
     const collectorId = Number(meter?.collectorId);
     const fromCollector = Number.isFinite(collectorId)

@@ -314,6 +314,7 @@ import {
   formatMeterEnergyUnit,
   formatMeterInstallAddress
 } from "../utils/meter-display";
+import { resolveMeterListOnlineDisplay } from "../utils/device-online-status";
 import {
   ensureMeterUsageSeries,
   getMeterUsageCache,
@@ -407,19 +408,9 @@ const displayTotalReading = computed(() => {
 });
 
 /** 与电表管理列表「在线状态」列一致 */
-const meterListStatus = computed(() => {
-  const s = listRow.value.status;
-  const statusMap: Record<
-    string,
-    { text: string; type: "success" | "danger" | "warning" | "info" }
-  > = {
-    NORMAL: { text: "在线", type: "success" },
-    FAULT: { text: "故障", type: "danger" },
-    OFFLINE: { text: "离线", type: "warning" }
-  };
-  const key = s != null ? String(s).toUpperCase() : "";
-  return statusMap[key] || { text: "未知", type: "info" };
-});
+const meterListStatus = computed(() =>
+  resolveMeterListOnlineDisplay(listRow.value)
+);
 
 const extraFieldsToShow = computed(() => {
   if (isElectric.value) return [];
